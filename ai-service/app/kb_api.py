@@ -1,8 +1,4 @@
-"""FastAPI app for ai-service.
-
-It also hosts the Kafka consumer, so one `uvicorn` process runs both
-the knowledge-base REST API and the event-driven AI flow.
-"""
+"""FastAPI app for ai-service: knowledge base REST API + Kafka consumer."""
 
 from __future__ import annotations
 
@@ -10,12 +6,15 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field
 
+from . import db
 from .config import settings
 from .consumer import TicketConsumer
 from .events import producer
 from .pipeline import enrich_ticket
+from .rag import chunking, store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +24,28 @@ log = logging.getLogger("ai-service")
 
 _consumer_task: asyncio.Task | None = None
 _consumer: TicketConsumer | None = None
+
+
+class CreateArticleRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1)
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[dict]
+
+
+async def _ensure_schema(retries: int = 10) -> None:
+    """The Postgres container may still be initialising."""
+    for attempt in range(1, retries + 1):
+        try:
+            await asyncio.to_thread(store.create_tables)
+            return
+        except Exception as exc:  # noqa: BLE001
+            log.warning("schema init failed (%s/%s): %s", attempt, retries, exc)
+            await asyncio.sleep(2)
+    raise RuntimeError("could not connect to Postgres to create the knowledge base schema")
 
 
 async def _run_with_retry(consumer: TicketConsumer) -> None:
@@ -82,11 +103,13 @@ async def _stop_consumer() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await _ensure_schema()
     await _start_consumer()
     try:
         yield
     finally:
         await _stop_consumer()
+        await asyncio.to_thread(db.close_pool)
 
 
 app = FastAPI(
@@ -101,16 +124,53 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "ai-service"}
 
 
-@app.get("/demo/ticket-created")
-def demo_ticket_created() -> dict[str, str]:
-    """Helper: shape of the event this service consumes (contracts/ticket.created.json)."""
+# --- knowledge base -------------------------------------------------------
+
+
+# Sync `def` endpoints: FastAPI runs them in a thread pool, so the blocking
+# Postgres and embedding calls here never stall the Kafka consumer.
+
+
+@app.post("/kb/articles", status_code=201)
+def add_article(payload: CreateArticleRequest) -> dict:
+    """Adds an article and chunks + embeds it automatically."""
+    return store.create_article(payload.title, payload.content)
+
+
+@app.get("/kb/articles")
+def articles() -> list[dict]:
+    return store.list_articles()
+
+
+@app.get("/kb/articles/{article_id}")
+def article(article_id: int) -> dict:
+    found = store.get_article(article_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"Article {article_id} not found")
+    return found
+
+
+@app.delete("/kb/articles/{article_id}", status_code=204)
+def remove_article(article_id: int) -> None:
+    if not store.delete_article(article_id):
+        raise HTTPException(status_code=404, detail=f"Article {article_id} not found")
+
+
+@app.get("/kb/search", response_model=SearchResponse)
+def search(q: str = Query(min_length=1), limit: int = Query(default=3, ge=1, le=20)) -> SearchResponse:
+    """Test search: returns the closest chunks, i.e. what the AI would see."""
+    return SearchResponse(query=q, results=store.search_chunks(q, limit))
+
+
+@app.get("/kb/chunk-stats")
+def chunk_stats() -> dict:
+    """Small helper for the UI: how many articles/chunks exist."""
+    articles = store.list_articles()
     return {
-        "eventId": "uuid",
-        "ticketId": "123",
-        "customerEmail": "user@example.com",
-        "subject": "Payment failed",
-        "message": "I was charged twice for my order.",
-        "createdAt": "2026-11-26T10:00:00Z",
+        "articles": len(articles),
+        "chunks": sum(int(a.get("chunkCount") or 0) for a in articles),
+        "chunkSize": chunking.DEFAULT_CHUNK_SIZE,
+        "overlap": chunking.DEFAULT_OVERLAP,
     }
 
 

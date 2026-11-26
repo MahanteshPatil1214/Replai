@@ -9,6 +9,16 @@ from app.events import TICKET_ENRICHED
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
 
 
+@pytest.fixture(autouse=True)
+def no_knowledge_base(monkeypatch):
+    """Keep pipeline tests independent of a running Postgres."""
+
+    async def empty(subject, message):
+        return []
+
+    monkeypatch.setattr(pipeline, "_retrieve_chunks", empty)
+
+
 @pytest.fixture
 def sent(monkeypatch):
     calls = []
