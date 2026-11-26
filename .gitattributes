@@ -1,0 +1,5 @@
+# Keep line endings consistent across machines (Kafka/Maven shell scripts need LF).
+* text=auto
+*.sh text eol=lf
+mvnw text eol=lf
+*.bat text eol=crlf

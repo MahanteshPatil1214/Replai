@@ -1,0 +1,12 @@
+{
+  "eventId": "uuid",
+  "ticketId": "123",
+  "category": "Billing",
+  "priority": "HIGH",
+  "sentiment": "NEGATIVE",
+  "summary": "Customer was charged twice for one order.",
+  "suggestedReply": "Hi, we're sorry about the double charge...",
+  "sources": [
+    { "articleId": 7, "title": "Refunds for duplicate charges" }
+  ]
+}

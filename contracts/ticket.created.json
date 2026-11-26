@@ -1,0 +1,8 @@
+{
+  "eventId": "uuid",
+  "ticketId": "123",
+  "customerEmail": "user@example.com",
+  "subject": "Payment failed",
+  "message": "I was charged twice for my order.",
+  "createdAt": "2026-11-26T10:00:00Z"
+}

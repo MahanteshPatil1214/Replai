@@ -1,0 +1,25 @@
+# secrets
+.env
+
+# Java
+ticket-service/target/
+*.class
+*.iml
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+web/node_modules/
+web/dist/
+web/.vite/
+
+# misc
+.DS_Store
+*.log
