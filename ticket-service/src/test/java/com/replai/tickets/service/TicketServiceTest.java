@@ -2,10 +2,14 @@ package com.replai.tickets.service;
 
 import com.replai.tickets.dto.CreateTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
+import com.replai.tickets.kafka.TicketCreatedEvent;
+import com.replai.tickets.kafka.TicketEventProducer;
 import com.replai.tickets.model.Ticket;
 import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.util.Optional;
@@ -13,27 +17,49 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TicketServiceTest {
 
-    private final TicketRepository repository = Mockito.mock(TicketRepository.class);
-    private final TicketService service = new TicketService(repository);
+    private TicketRepository repository;
+    private TicketEventProducer producer;
+    private TicketService service;
+
+    @BeforeEach
+    void setUp() {
+        repository = Mockito.mock(TicketRepository.class);
+        producer = Mockito.mock(TicketEventProducer.class);
+        service = new TicketService(repository, producer);
+
+        when(repository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    }
 
     @Test
-    void createSavesAnOpenTicket() {
-        when(repository.save(any(Ticket.class))).thenAnswer(invocation -> {
-            Ticket ticket = invocation.getArgument(0);
-            return ticket;
-        });
-
+    void createSavesAnOpenTicketAndPublishesTicketCreated() {
         TicketResponse response = service.create(
                 new CreateTicketRequest("user@example.com", "Payment failed", "Charged twice."));
 
         assertThat(response.status()).isEqualTo(TicketStatus.OPEN.name());
         assertThat(response.customerEmail()).isEqualTo("user@example.com");
-        assertThat(response.subject()).isEqualTo("Payment failed");
         assertThat(response.category()).isNull();
+
+        ArgumentCaptor<TicketCreatedEvent> captor = ArgumentCaptor.forClass(TicketCreatedEvent.class);
+        verify(producer).publishTicketCreated(captor.capture());
+        assertThat(captor.getValue().subject()).isEqualTo("Payment failed");
+        assertThat(captor.getValue().eventId()).isNotBlank();
+        assertThat(captor.getValue().ticketId()).isNotBlank();
+    }
+
+    @Test
+    void createDoesNotPublishWhenSaveFails() {
+        when(repository.save(any(Ticket.class))).thenThrow(new RuntimeException("db down"));
+
+        assertThatThrownBy(() -> service.create(new CreateTicketRequest("a@b.com", "s", "m")))
+                .isInstanceOf(RuntimeException.class);
+
+        verify(producer, never()).publishTicketCreated(any());
     }
 
     @Test
@@ -52,7 +78,6 @@ class TicketServiceTest {
         ticket.setSubject("s");
         ticket.setMessage("m");
         when(repository.findById(1L)).thenReturn(Optional.of(ticket));
-        when(repository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         TicketResponse response = service.updateStatus(1L, "RESOLVED");
 

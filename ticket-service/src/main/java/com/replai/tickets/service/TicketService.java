@@ -2,6 +2,8 @@ package com.replai.tickets.service;
 
 import com.replai.tickets.dto.CreateTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
+import com.replai.tickets.kafka.TicketCreatedEvent;
+import com.replai.tickets.kafka.TicketEventProducer;
 import com.replai.tickets.model.Ticket;
 import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class TicketService {
@@ -18,9 +21,11 @@ public class TicketService {
     private static final Logger log = LoggerFactory.getLogger(TicketService.class);
 
     private final TicketRepository ticketRepository;
+    private final TicketEventProducer eventProducer;
 
-    public TicketService(TicketRepository ticketRepository) {
+    public TicketService(TicketRepository ticketRepository, TicketEventProducer eventProducer) {
         this.ticketRepository = ticketRepository;
+        this.eventProducer = eventProducer;
     }
 
     @Transactional
@@ -33,6 +38,16 @@ public class TicketService {
 
         Ticket saved = ticketRepository.save(ticket);
         log.info("Created ticket {}", saved.getId());
+
+        eventProducer.publishTicketCreated(new TicketCreatedEvent(
+                UUID.randomUUID().toString(),
+                String.valueOf(saved.getId()),
+                saved.getCustomerEmail(),
+                saved.getSubject(),
+                saved.getMessage(),
+                saved.getCreatedAt()
+        ));
+
         return TicketResponse.from(saved);
     }
 
