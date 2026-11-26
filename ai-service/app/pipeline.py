@@ -1,7 +1,8 @@
-"""The AI flow: ticket.created -> analyse -> ticket.enriched."""
+"""The AI flow: ticket.created -> RAG retrieval -> analyse -> ticket.enriched."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -10,6 +11,19 @@ from . import llm
 from .events import TICKET_ENRICHED, producer
 
 log = logging.getLogger("ai-service.pipeline")
+
+
+def sources_from_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per article, in retrieval order (a chunk may repeat an article)."""
+    sources: list[dict[str, Any]] = []
+    seen: set[Any] = set()
+    for chunk in chunks:
+        article_id = chunk.get("article_id")
+        if article_id is None or article_id in seen:
+            continue
+        seen.add(article_id)
+        sources.append({"articleId": article_id, "title": chunk.get("title")})
+    return sources
 
 
 def build_enriched_event(
@@ -40,37 +54,34 @@ async def enrich_ticket(event: dict[str, Any]) -> dict[str, Any]:
     subject = str(event.get("subject") or "")
     message = str(event.get("message") or "")
 
-    # Step 8/10 add the knowledge base retrieval here (RAG).
+    # RAG: embed the ticket and pull the closest knowledge base chunks.
     chunks = await _retrieve_chunks(subject, message)
-    sources = [
-        {"articleId": chunk.get("article_id"), "title": chunk.get("title")}
-        for chunk in chunks
-        if chunk.get("article_id") is not None
-    ]
+    sources = sources_from_chunks(chunks)
 
     result = llm.analyse(subject, message, chunks)
     enriched = build_enriched_event(ticket_id, result, sources)
 
     await producer.publish(TICKET_ENRICHED, ticket_id, enriched)
     log.info(
-        "Enriched ticket %s -> %s/%s/%s (%d sources)",
+        "Enriched ticket %s -> %s/%s/%s (%d chunks, %d sources)",
         ticket_id,
         result["category"],
         result["priority"],
         result["sentiment"],
+        len(chunks),
         len(sources),
     )
     return enriched
 
 
 async def _retrieve_chunks(subject: str, message: str) -> list[dict[str, Any]]:
-    """RAG retrieval. Returns [] until the knowledge base exists (step 8)."""
+    """Top-3 knowledge base chunks for the ticket. Failures degrade to no RAG."""
     try:
-        from .rag import search_chunks  # imported lazily so early steps stay light
+        from .rag import search_chunks
     except ImportError:
         return []
     try:
-        return await search_chunks(f"{subject}\n{message}".strip())
+        return await asyncio.to_thread(search_chunks, f"{subject}\n{message}".strip(), 3)
     except Exception as exc:  # noqa: BLE001 - retrieval failure must not kill the flow
         log.error("Knowledge base search failed: %s", exc)
         return []
