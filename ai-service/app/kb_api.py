@@ -7,14 +7,15 @@ the knowledge-base REST API and the event-driven AI flow.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from .config import settings
-from .consumer import TicketConsumer, log_ticket_created
+from .consumer import TicketConsumer
+from .events import producer
+from .pipeline import enrich_ticket
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +27,21 @@ _consumer_task: asyncio.Task | None = None
 _consumer: TicketConsumer | None = None
 
 
+async def _run_with_retry(consumer: TicketConsumer) -> None:
+    """A Kafka blip at startup must not take the service down permanently."""
+    delay = 2.0
+    while True:
+        try:
+            await consumer.run()
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("Kafka consumer failed, retrying in %ss", delay)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30.0)
+
+
 async def _start_consumer() -> None:
     global _consumer, _consumer_task
     if not settings.consumer_enabled:
@@ -34,18 +50,33 @@ async def _start_consumer() -> None:
     if _consumer_task and not _consumer_task.done():
         return
 
-    _consumer = TicketConsumer(handler=log_ticket_created)
-    _consumer_task = asyncio.create_task(_consumer.run())
+    try:
+        await producer.start()
+    except Exception:  # noqa: BLE001 - publish() retries the connection lazily
+        log.exception("Kafka producer not reachable yet, will retry on publish")
+
+    _consumer = TicketConsumer(handler=enrich_ticket)
+    _consumer_task = asyncio.create_task(_run_with_retry(_consumer))
     log.info("consumer task scheduled")
 
 
 async def _stop_consumer() -> None:
     global _consumer_task
     if _consumer is not None:
-        await _consumer.stop()
+        try:
+            await _consumer.stop()
+        except Exception:  # noqa: BLE001
+            log.exception("error while stopping the consumer")
     if _consumer_task is not None:
-        await asyncio.wait_for(_consumer_task, timeout=10)
+        try:
+            await asyncio.wait_for(asyncio.shield(_consumer_task), timeout=10)
+        except Exception:  # noqa: BLE001 - shutdown should never fail loudly
+            _consumer_task.cancel()
     _consumer_task = None
+    try:
+        await producer.stop()
+    except Exception:  # noqa: BLE001
+        log.exception("error while stopping the producer")
     log.info("consumer task stopped")
 
 
