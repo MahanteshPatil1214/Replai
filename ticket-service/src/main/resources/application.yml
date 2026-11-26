@@ -1,0 +1,21 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: ticket-service
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/replai}
+    username: ${POSTGRES_USER:replai}
+    password: ${POSTGRES_PASSWORD:replai}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.replai: INFO
