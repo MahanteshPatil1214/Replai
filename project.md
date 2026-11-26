@@ -310,6 +310,7 @@ docker compose up --build
 # UI:       http://localhost:3000
 # API:      http://localhost:8081/api/tickets
 # Kafka UI: http://localhost:8080
+# Postgres: localhost:5433 (host port, 5432 was already taken)
 ```
 
 ---

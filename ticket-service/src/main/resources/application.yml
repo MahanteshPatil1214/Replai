@@ -5,7 +5,7 @@ spring:
   application:
     name: ticket-service
   datasource:
-    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/replai}
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5433/replai}
     username: ${POSTGRES_USER:replai}
     password: ${POSTGRES_PASSWORD:replai}
   jpa:
@@ -22,6 +22,8 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
+      properties:
+        max.block.ms: 5000
 
 logging:
   level:

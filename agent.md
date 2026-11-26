@@ -78,7 +78,7 @@ cd ticket-service && ./mvnw test
 
 # Python service (local)
 cd ai-service && pip install -r requirements.txt
-cd ai-service && uvicorn app.kb_api:app --reload --port 8000
+cd ai-service && uvicorn app.kb_api:app --reload --port 8001
 cd ai-service && pytest
 
 # Web (local)
@@ -92,8 +92,13 @@ cd web && npm run dev
 |---|---|
 | Web UI | http://localhost:3000 |
 | ticket-service API | http://localhost:8081/api/tickets |
-| ai-service API | http://localhost:8000 |
+| ai-service API | http://localhost:8001 |
 | Kafka UI | http://localhost:8080 |
+| Postgres | localhost:5433 (user `replai`, db `replai`) |
+
+> Host port 5432 and 8000 are already taken by another local project, so Replai uses
+> **5433** for Postgres and **8001** for ai-service. Inside the Docker network the
+> ports stay canonical: `postgres:5432` and `ai-service:8000`.
 
 ## Environment variables
 
