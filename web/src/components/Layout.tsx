@@ -13,7 +13,7 @@ export default function Layout({
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-hairline bg-paper/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-7 px-6 py-4">
+        <div className="flex items-center gap-7 px-6 py-4">
           <a href="/" className="font-display text-xl leading-none tracking-tight">
             Replai
           </a>
@@ -23,9 +23,9 @@ export default function Layout({
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
+      <main className="px-6 py-10">{children}</main>
 
-      <footer className="mx-auto max-w-5xl border-t border-hairline px-6 py-6 text-xs text-muted">
+      <footer className="border-t border-hairline px-6 py-6 text-xs text-muted">
         Replai — tickets are classified, prioritised and drafted with retrieval over your knowledge base.
       </footer>
     </div>

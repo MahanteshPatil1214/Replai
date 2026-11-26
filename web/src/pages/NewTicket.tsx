@@ -28,10 +28,10 @@ export default function NewTicket() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div>
       <p className="mono text-muted">01 / New ticket</p>
       <h1 className="mt-2 text-4xl">How can we help?</h1>
-      <p className="mt-3 max-w-xl text-[15px] text-muted">
+      <p className="mt-3 text-[15px] text-muted">
         Tell us what happened. Replai will classify the ticket, judge its urgency and draft a reply
         grounded in our help articles — you'll see it in a moment.
       </p>
