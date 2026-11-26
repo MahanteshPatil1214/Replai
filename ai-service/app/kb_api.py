@@ -15,6 +15,7 @@ from .consumer import TicketConsumer
 from .events import producer
 from .pipeline import enrich_ticket
 from .rag import chunking, store
+from .seed import seed_if_empty
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,9 +102,19 @@ async def _stop_consumer() -> None:
     log.info("consumer task stopped")
 
 
+async def _seed_knowledge_base() -> None:
+    try:
+        seeded = await asyncio.to_thread(seed_if_empty)
+        if seeded:
+            log.info("Loaded %s seed articles into the knowledge base", seeded)
+    except Exception:  # noqa: BLE001 - an empty KB still lets the service run
+        log.exception("Could not seed the knowledge base")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ensure_schema()
+    await _seed_knowledge_base()
     await _start_consumer()
     try:
         yield

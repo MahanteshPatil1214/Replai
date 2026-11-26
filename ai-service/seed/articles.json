@@ -1,0 +1,34 @@
+[
+  {
+    "title": "Refund policy",
+    "content": "You can request a refund within 30 days of the purchase date. Refunds are returned to the original payment method and usually appear on your statement within 5 to 10 business days. Digital goods that have already been downloaded are not eligible unless they are faulty. To start a refund, open the order from your account page and choose Request a refund, or reply to your order confirmation email."
+  },
+  {
+    "title": "Refunds for duplicate charges",
+    "content": "If your card was charged twice for the same order, the extra charge is almost always a temporary pre-authorisation from the payment provider. Duplicate authorisations drop off automatically within 3 to 5 business days and you are only ever charged once. If both charges have settled on your statement, we will refund the duplicate within 1 business day. Send us the order number and the last four digits of the card so we can trace both transactions."
+  },
+  {
+    "title": "Password reset",
+    "content": "Go to the sign in page and select Forgot password, then enter the email address on your account. You will receive a reset link within a few minutes that is valid for 60 minutes. If the email does not arrive, check your spam folder and make sure you are using the address you registered with. For security we never share passwords with support agents, and we will never ask you for your password."
+  },
+  {
+    "title": "Account locked after failed logins",
+    "content": "The account is locked automatically after 5 failed sign in attempts and unlocks after 15 minutes. You can unlock sooner by completing the password reset flow, which clears the lock immediately. Repeated locks can also be triggered by a password manager filling an old password, so update the saved entry after you change it. Contact support if the account stays locked for more than an hour."
+  },
+  {
+    "title": "Shipping times and tracking",
+    "content": "Standard shipping takes 3 to 5 business days and express shipping takes 1 to 2 business days. Orders placed before 2 PM local time are dispatched the same day. A tracking number is emailed as soon as the parcel leaves the warehouse and usually takes a few hours to show movement. If tracking has not updated for 48 hours, reply to this message and we will open an enquiry with the carrier."
+  },
+  {
+    "title": "Payment failures at checkout",
+    "content": "A declined payment usually means the card has insufficient funds, an international transaction block, or the bank flagged the purchase. Try a different card, or contact your bank to authorise the charge. Your card is never charged when the checkout fails, but a temporary hold can appear and clear within 3 to 5 business days. Repeated failures can temporarily block checkout for 30 minutes."
+  },
+  {
+    "title": "Cancelling or changing an order",
+    "content": "Orders can be changed or cancelled free of charge until they enter the packing stage, which is usually within 2 hours of ordering. After that the order can no longer be edited, but you can refuse the delivery and we will refund you when the parcel returns to us. Subscription plans can be cancelled at any time from Settings, Billing, and the plan stays active until the end of the paid period."
+  },
+  {
+    "title": "Contacting support",
+    "content": "Our support team answers tickets Monday to Friday, 9 AM to 6 PM IST, and we aim to reply to every ticket within 4 business hours. Urgent billing problems are escalated automatically when you include the order number in the subject line. You can also attach screenshots or a photo of your statement to speed things up. Replies arrive by email, so there is no need to stay signed in."
+  }
+]
