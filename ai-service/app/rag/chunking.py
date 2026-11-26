@@ -13,6 +13,22 @@ def _split_sentences(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
+def _overlap_tail(text: str, start: int, overlap: int) -> str:
+    """The `overlap` characters before index `start`.
+
+    If the cut lands inside a word, the half word is dropped so the next chunk
+    never begins with something like "atement,".
+    """
+    if overlap <= 0:
+        return ""
+    begin = max(0, start - overlap)
+    tail = text[begin:start]
+    if begin > 0 and not text[begin - 1].isspace():
+        space = tail.find(" ")
+        tail = tail[space + 1 :] if space != -1 else ""
+    return tail.strip()
+
+
 def chunk_text(
     text: str,
     size: int = DEFAULT_CHUNK_SIZE,
@@ -35,7 +51,8 @@ def chunk_text(
     for sentence in _split_sentences(text):
         while len(sentence) > size:
             # A single huge sentence: cut it and treat the rest as a new one.
-            head, sentence = sentence[:size], sentence[size - overlap:]
+            head, remainder = sentence[:size], sentence[size:]
+            sentence = f"{_overlap_tail(sentence, size, overlap)} {remainder}".strip()
             if current:
                 chunks.append(current)
                 current = ""
@@ -47,7 +64,7 @@ def chunk_text(
             continue
 
         chunks.append(current)
-        carry = current[-overlap:] if overlap else ""
+        carry = _overlap_tail(current, len(current), overlap)
         current = f"{carry} {sentence}".strip() if carry else sentence
 
     if current:

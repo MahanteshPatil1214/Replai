@@ -47,3 +47,26 @@ def test_paragraph_breaks_are_kept_as_boundaries():
     assert all(len(chunk) <= 15 for chunk in chunks)
     # no content is lost, whitespace only
     assert re.sub(r"\s+", "", "".join(chunks)) == re.sub(r"\s+", "", text)
+
+
+def test_chunks_never_start_with_a_half_word():
+    sentences = [f"Refund item{i} takes five business days." for i in range(80)]
+    text = " ".join(sentences)
+
+    chunks = chunk_text(text, size=200, overlap=50)
+
+    assert len(chunks) > 2
+    words = set(text.split())
+    for chunk in chunks:
+        assert chunk.split()[0] in words, f"chunk starts mid-word: {chunk[:40]!r}"
+
+
+def test_overlap_keeps_context_between_chunks():
+    text = ". ".join(f"Sentence number {i} explains one rule." for i in range(40))
+
+    chunks = chunk_text(text, size=180, overlap=60)
+
+    # consecutive chunks share at least one complete word
+    for previous, following in zip(chunks, chunks[1:]):
+        shared = set(previous.split()) & set(following.split())
+        assert shared, f"no overlap between {previous!r} and {following!r}"
