@@ -46,6 +46,52 @@ services:
       timeout: 10s
       retries: 20
 
+  ticket-service:
+    build: ./ticket-service
+    container_name: replai-ticket-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-replai}
+      POSTGRES_USER: ${POSTGRES_USER:-replai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replai}
+
+  ai-service:
+    build: ./ai-service
+    container_name: replai-ai-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-replai}
+      POSTGRES_USER: ${POSTGRES_USER:-replai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replai}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+
+  web:
+    build: ./web
+    container_name: replai-web
+    depends_on:
+      - ticket-service
+      - ai-service
+    ports:
+      - "3000:80"
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: replai-kafka-ui
