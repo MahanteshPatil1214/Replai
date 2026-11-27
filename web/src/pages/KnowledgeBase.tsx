@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useCreateArticle, useDeleteArticle, useSearch, useArticles } from '../api/kb'
 import { formatTimestamp } from '../lib/format'
 
@@ -20,6 +21,18 @@ export default function KnowledgeBase() {
   const [content, setContent] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+
+  // "Create article from this ticket" (knowledge gaps) lands here with a prefill.
+  const prefillTitle = searchParams.get('title')
+  const prefillContent = searchParams.get('content')
+  useEffect(() => {
+    if (prefillTitle !== null || prefillContent !== null) {
+      setTitle(prefillTitle ?? '')
+      setContent(prefillContent ?? '')
+      setShowForm(true)
+    }
+  }, [prefillTitle, prefillContent])
 
   const { data: articles, isLoading } = useArticles()
   const { data: search, isFetching: searching } = useSearch(query)
@@ -43,7 +56,7 @@ export default function KnowledgeBase() {
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mono text-muted">03 / Knowledge base</p>
+          <p className="mono text-muted">07 / Knowledge base</p>
           <h1 className="mt-2 text-4xl">What the AI reads</h1>
           <p className="mt-3 max-w-xl text-[15px] text-muted">
             Every article is split into chunks and embedded. Ask a question below to see exactly

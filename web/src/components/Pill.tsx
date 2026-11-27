@@ -21,9 +21,21 @@ export function Pill({ tone = 'neutral', children }: { tone?: Tone; children: Re
   )
 }
 
-const PRIORITY_TONE: Record<string, Tone> = { HIGH: 'red', MEDIUM: 'amber', LOW: 'neutral' }
+const PRIORITY_TONE: Record<string, Tone> = {
+  CRITICAL: 'red',
+  HIGH: 'amber',
+  MEDIUM: 'neutral',
+  LOW: 'neutral',
+}
 const SENTIMENT_TONE: Record<string, Tone> = { POSITIVE: 'green', NEGATIVE: 'red', NEUTRAL: 'neutral' }
-const STATUS_TONE: Record<string, Tone> = { OPEN: 'violet', ENRICHED: 'green', RESOLVED: 'neutral' }
+const STATUS_TONE: Record<string, Tone> = {
+  OPEN: 'neutral',
+  NEEDS_TRIAGE: 'amber',
+  ASSIGNED: 'ink',
+  IN_PROGRESS: 'violet',
+  RESOLVED: 'green',
+}
+const DRAFT_TONE: Record<string, Tone> = { ACCEPTED: 'green', EDITED: 'amber', REJECTED: 'red' }
 
 export const priorityTone = (value: string | null | undefined): Tone =>
   PRIORITY_TONE[value ?? ''] ?? 'neutral'
@@ -33,5 +45,8 @@ export const sentimentTone = (value: string | null | undefined): Tone =>
 
 export const statusTone = (value: string | null | undefined): Tone =>
   STATUS_TONE[value ?? ''] ?? 'neutral'
+
+export const draftTone = (value: string | null | undefined): Tone =>
+  DRAFT_TONE[value ?? ''] ?? 'neutral'
 
 export const categoryTone = (_value: Category | string | null | undefined): Tone => 'ink'

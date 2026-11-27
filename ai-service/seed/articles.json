@@ -30,5 +30,13 @@
   {
     "title": "Contacting support",
     "content": "Our support team answers tickets Monday to Friday, 9 AM to 6 PM IST, and we aim to reply to every ticket within 4 business hours. Urgent billing problems are escalated automatically when you include the order number in the subject line. You can also attach screenshots or a photo of your statement to speed things up. Replies arrive by email, so there is no need to stay signed in."
+  },
+  {
+    "title": "API errors and rate limits",
+    "content": "HTTP 401 errors indicate an invalid or expired API key; generate a new key from Settings, API Keys and update your Authorization header. HTTP 429 means your workspace exceeded the 120 requests per minute rate limit—back off using exponential retry with jitter and check the Retry-After header. HTTP 400 or 422 errors mean the JSON payload failed validation; check the error field in the response body."
+  },
+  {
+    "title": "API outage troubleshooting",
+    "content": "If our production API returns 502, 503, or 504 errors across multiple endpoints, check the status page first for active incidents. Verify your request timeout is at least 15 seconds and that your client is not pinning a stale DNS record. Include your workspace ID, affected endpoint, timestamps in UTC, and sample request IDs when reporting an outage so the infrastructure team can trace it immediately."
   }
 ]
