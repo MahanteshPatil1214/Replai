@@ -1,12 +1,15 @@
 {
   "eventId": "uuid",
   "ticketId": "123",
-  "category": "Billing",
-  "priority": "HIGH",
+  "category": "Infrastructure",
+  "priority": "CRITICAL",
   "sentiment": "NEGATIVE",
-  "summary": "Customer was charged twice for one order.",
-  "suggestedReply": "Hi, we're sorry about the double charge...",
+  "summary": "Production API is returning 503 errors.",
+  "suggestedReply": "Hi, we're sorry about the outage. Our infrastructure team is investigating...",
+  "confidence": 0.82,
+  "needsHuman": false,
+  "knowledgeGap": false,
   "sources": [
-    { "articleId": 7, "title": "Refunds for duplicate charges" }
+    { "articleId": 4, "title": "API outage troubleshooting" }
   ]
 }

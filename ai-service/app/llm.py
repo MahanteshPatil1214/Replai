@@ -15,11 +15,11 @@ from .config import settings
 
 log = logging.getLogger("ai-service.llm")
 
-CATEGORIES = ("Billing", "Technical", "Account", "General")
-PRIORITIES = ("LOW", "MEDIUM", "HIGH")
+CATEGORIES = ("Software", "Infrastructure", "Billing", "Account", "General")
+PRIORITIES = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
 SENTIMENTS = ("POSITIVE", "NEUTRAL", "NEGATIVE")
 
-PROMPT_TEMPLATE = """You are a customer support assistant.
+PROMPT_TEMPLATE = """You are a customer support triage assistant.
 Use ONLY the knowledge base articles below to write the reply.
 If the articles don't cover the question, say a human agent will follow up.
 
@@ -31,8 +31,8 @@ Ticket:
 {message}
 
 Return ONLY JSON with:
-category (Billing | Technical | Account | General),
-priority (LOW | MEDIUM | HIGH),
+category (Software | Infrastructure | Billing | Account | General),
+priority (LOW | MEDIUM | HIGH | CRITICAL),
 sentiment (POSITIVE | NEUTRAL | NEGATIVE),
 summary (one sentence),
 suggestedReply (polite, short)."""
@@ -95,7 +95,7 @@ def _one_of(value: Any, allowed: tuple[str, ...], default: str) -> str:
     return default
 
 
-def normalise(result: dict[str, Any], fallback: dict[str, Any]) -> dict[str, str]:
+def normalise(result: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
     """Coerce a loose LLM object into the exact contract shape."""
     return {
         "category": _one_of(result.get("category"), CATEGORIES, fallback["category"]),
@@ -103,11 +103,12 @@ def normalise(result: dict[str, Any], fallback: dict[str, Any]) -> dict[str, str
         "sentiment": _one_of(result.get("sentiment"), SENTIMENTS, fallback["sentiment"]),
         "summary": str(result.get("summary") or fallback["summary"]).strip(),
         "suggestedReply": str(result.get("suggestedReply") or fallback["suggestedReply"]).strip(),
+        "_fallback": False,
     }
 
 
-def fallback_result(subject: str, message: str, chunks: list[dict[str, Any]]) -> dict[str, str]:
-    """Safe defaults: category General, priority MEDIUM (per agent.md)."""
+def fallback_result(subject: str, message: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Safe defaults: category General, priority MEDIUM, needsHuman = true."""
     if chunks:
         title = chunks[0].get("title") or "our help centre"
         reply = (
@@ -128,6 +129,7 @@ def fallback_result(subject: str, message: str, chunks: list[dict[str, Any]]) ->
         "sentiment": "NEUTRAL",
         "summary": (message.strip() or subject.strip() or "Support request")[:200],
         "suggestedReply": reply.strip(),
+        "_fallback": True,
     }
 
 
@@ -163,8 +165,12 @@ def _call_llm(prompt: str) -> str:
     return content
 
 
-def analyse(subject: str, message: str, chunks: list[dict[str, Any]] | None = None) -> dict[str, str]:
-    """Full step: prompt -> LLM -> parsed JSON, with a safe fallback."""
+def analyse(subject: str, message: str, chunks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Full step: prompt -> LLM -> parsed JSON, with a safe fallback.
+
+    The returned dict is the contract shape plus `_fallback`, which is True
+    when the LLM could not be trusted (no key, bad JSON, network error).
+    """
     chunks = chunks or []
     fallback = fallback_result(subject, message, chunks)
 

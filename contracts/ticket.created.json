@@ -2,7 +2,7 @@
   "eventId": "uuid",
   "ticketId": "123",
   "customerEmail": "user@example.com",
-  "subject": "Payment failed",
-  "message": "I was charged twice for my order.",
+  "subject": "Server is down",
+  "message": "Our production API returns 503 errors since morning.",
   "createdAt": "2026-11-26T10:00:00Z"
 }

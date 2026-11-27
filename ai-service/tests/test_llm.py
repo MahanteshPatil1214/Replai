@@ -81,5 +81,19 @@ def test_analyse_reply_comes_from_knowledge_base_when_available():
 
 def test_contract_shape_is_json_serialisable():
     out = analyse("subject", "message", [])
-    assert set(out) == {"category", "priority", "sentiment", "summary", "suggestedReply"}
+    assert set(out) == {
+        "category",
+        "priority",
+        "sentiment",
+        "summary",
+        "suggestedReply",
+        "_fallback",
+    }
     json.dumps(out)
+
+
+def test_fallback_marks_the_result_as_untrusted():
+    out = analyse("subject", "message", [])
+    assert out["_fallback"] is True
+    assert out["category"] == "General"
+    assert out["priority"] == "MEDIUM"

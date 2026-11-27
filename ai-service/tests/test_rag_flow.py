@@ -85,6 +85,9 @@ async def test_retrieved_chunks_are_handed_to_the_llm(monkeypatch):
         {"articleId": 1, "title": "Refund policy"},
     ]
     assert result["suggestedReply"] == "We will refund it."
+    assert result["confidence"] == 0.83
+    assert result["needsHuman"] is False
+    assert result["knowledgeGap"] is False
 
 
 @pytest.mark.asyncio
@@ -104,5 +107,7 @@ async def test_enrichment_still_works_when_retrieval_fails(monkeypatch):
     )
 
     assert result["sources"] == []
-    assert result["category"] in ("Billing", "Technical", "Account", "General")
+    assert result["category"] in ("Software", "Infrastructure", "Billing", "Account", "General")
+    assert result["needsHuman"] is True
+    assert result["knowledgeGap"] is True
     assert fake_producer.calls[0][0] == "ticket.enriched"

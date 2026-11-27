@@ -25,6 +25,8 @@ class Settings:
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
     consumer_enabled: bool = True
+    # Below this similarity the AI does not guess: hand the ticket to a human.
+    confidence_threshold: float = 0.45
 
     @property
     def postgres_dsn(self) -> str:
@@ -50,6 +52,7 @@ def load_settings() -> Settings:
         embedding_model=_env("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
         embedding_dim=int(_env("EMBEDDING_DIM", "384")),
         consumer_enabled=_env("KAFKA_CONSUMER_ENABLED", "true").lower() != "false",
+        confidence_threshold=float(_env("CONFIDENCE_THRESHOLD", "0.45")),
     )
 
 

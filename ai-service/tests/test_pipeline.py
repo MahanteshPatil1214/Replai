@@ -61,6 +61,9 @@ async def test_enrich_publishes_ticket_enriched_with_ticket_id_key(sent):
         "sentiment",
         "summary",
         "suggestedReply",
+        "confidence",
+        "needsHuman",
+        "knowledgeGap",
         "sources",
     }
 
@@ -88,18 +91,62 @@ def test_enriched_event_matches_contract():
     event = pipeline.build_enriched_event(
         "123",
         {
-            "category": "Billing",
-            "priority": "HIGH",
+            "category": "Infrastructure",
+            "priority": "CRITICAL",
             "sentiment": "NEGATIVE",
-            "summary": "Customer was charged twice for one order.",
-            "suggestedReply": "Hi, we're sorry about the double charge...",
+            "summary": "Production API is returning 503 errors.",
+            "suggestedReply": "Hi, we're sorry about the outage.",
         },
-        [{"articleId": 7, "title": "Refunds for duplicate charges"}],
+        [{"articleId": 4, "title": "API outage troubleshooting"}],
+        {"confidence": 0.82, "needsHuman": False, "knowledgeGap": False},
     )
 
     contract = json.loads((CONTRACTS / "ticket.enriched.json").read_text(encoding="utf-8"))
 
     assert set(event) == set(contract)
     assert event["sources"] == contract["sources"]
-    assert event["category"] in ("Billing", "Technical", "Account", "General")
-    assert event["priority"] in ("LOW", "MEDIUM", "HIGH")
+    assert event["category"] in ("Software", "Infrastructure", "Billing", "Account", "General")
+    assert event["priority"] in ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+    assert event["confidence"] == 0.82
+    assert event["needsHuman"] is False
+    assert event["knowledgeGap"] is False
+
+
+def test_confidence_is_the_best_chunk_similarity():
+    chunks = [{"score": 0.31}, {"score": 0.82}, {"score": 0.5}]
+    assert pipeline.confidence_from_chunks(chunks) == 0.82
+    assert pipeline.confidence_from_chunks([]) == 0.0
+
+
+def test_low_confidence_hands_the_ticket_to_a_human():
+    flags = pipeline.evaluate([{"score": 0.2}], used_fallback=False)
+
+    assert flags["confidence"] == 0.2
+    assert flags["knowledgeGap"] is True
+    assert flags["needsHuman"] is True
+
+
+def test_low_confidence_replaces_the_reply_with_an_honest_handoff():
+    event = pipeline.build_enriched_event(
+        "123",
+        {
+            "category": "General",
+            "priority": "MEDIUM",
+            "sentiment": "NEUTRAL",
+            "summary": "Nothing matched.",
+            "suggestedReply": "I made this up.",
+        },
+        [],
+        {"confidence": 0.1, "needsHuman": True, "knowledgeGap": True},
+    )
+
+    assert event["suggestedReply"] == pipeline.HUMAN_FOLLOWUP_REPLY
+    assert "human agent will follow up" in event["suggestedReply"]
+
+
+def test_llm_fallback_always_needs_a_human_even_with_good_chunks():
+    flags = pipeline.evaluate([{"score": 0.9}], used_fallback=True)
+
+    assert flags["confidence"] == 0.9
+    assert flags["knowledgeGap"] is False
+    assert flags["needsHuman"] is True
