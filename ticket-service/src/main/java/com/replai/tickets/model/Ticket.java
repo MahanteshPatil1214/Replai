@@ -50,12 +50,49 @@ public class Ticket {
     @Column(name = "suggested_reply", columnDefinition = "text")
     private String suggestedReply;
 
+    @Column(name = "team_id")
+    private Long teamId;
+
+    @Column(name = "assignee_id")
+    private Long assigneeId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "sources", columnDefinition = "jsonb")
     private List<SourceRef> sources;
 
+    @Column(name = "final_reply", columnDefinition = "text")
+    private String finalReply;
+
+    /** What the agent did with the AI draft: ACCEPTED, EDITED or REJECTED. */
+    @Column(name = "draft_action", length = 20)
+    private String draftAction;
+
+    @Column
+    private Double confidence;
+
+    @Column(name = "needs_human")
+    private Boolean needsHuman;
+
+    @Column(name = "knowledge_gap")
+    private Boolean knowledgeGap;
+
+    @Column(name = "sla_due_at")
+    private Instant slaDueAt;
+
+    @Column(name = "sla_breached")
+    private Boolean slaBreached = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    @Column(name = "resolved_by")
+    private Long resolvedBy;
 
     public Long getId() {
         return id;
@@ -147,5 +184,101 @@ public class Ticket {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Long getTeamId() {
+        return teamId;
+    }
+
+    public void setTeamId(Long teamId) {
+        this.teamId = teamId;
+    }
+
+    public Long getAssigneeId() {
+        return assigneeId;
+    }
+
+    public void setAssigneeId(Long assigneeId) {
+        this.assigneeId = assigneeId;
+    }
+
+    public String getFinalReply() {
+        return finalReply;
+    }
+
+    public void setFinalReply(String finalReply) {
+        this.finalReply = finalReply;
+    }
+
+    public String getDraftAction() {
+        return draftAction;
+    }
+
+    public void setDraftAction(String draftAction) {
+        this.draftAction = draftAction;
+    }
+
+    public Double getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
+    }
+
+    public Boolean getNeedsHuman() {
+        return needsHuman;
+    }
+
+    public void setNeedsHuman(Boolean needsHuman) {
+        this.needsHuman = needsHuman;
+    }
+
+    public Boolean getKnowledgeGap() {
+        return knowledgeGap;
+    }
+
+    public void setKnowledgeGap(Boolean knowledgeGap) {
+        this.knowledgeGap = knowledgeGap;
+    }
+
+    public Instant getSlaDueAt() {
+        return slaDueAt;
+    }
+
+    public void setSlaDueAt(Instant slaDueAt) {
+        this.slaDueAt = slaDueAt;
+    }
+
+    public Boolean getSlaBreached() {
+        return slaBreached;
+    }
+
+    public void setSlaBreached(Boolean slaBreached) {
+        this.slaBreached = slaBreached;
+    }
+
+    public Instant getAssignedAt() {
+        return assignedAt;
+    }
+
+    public void setAssignedAt(Instant assignedAt) {
+        this.assignedAt = assignedAt;
+    }
+
+    public Instant getResolvedAt() {
+        return resolvedAt;
+    }
+
+    public void setResolvedAt(Instant resolvedAt) {
+        this.resolvedAt = resolvedAt;
+    }
+
+    public Long getResolvedBy() {
+        return resolvedBy;
+    }
+
+    public void setResolvedBy(Long resolvedBy) {
+        this.resolvedBy = resolvedBy;
     }
 }

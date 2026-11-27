@@ -47,6 +47,9 @@ public class TicketEnrichmentService {
         ticket.setSentiment(event.sentiment());
         ticket.setSummary(event.summary());
         ticket.setSuggestedReply(event.suggestedReply());
+        ticket.setConfidence(event.confidence());
+        ticket.setNeedsHuman(event.needsHuman());
+        ticket.setKnowledgeGap(event.knowledgeGap());
         ticket.setSources(event.sources());
         ticket.setStatus(TicketStatus.ENRICHED);
 

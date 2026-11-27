@@ -46,6 +46,9 @@ class TicketEnrichmentServiceTest {
                 "NEGATIVE",
                 "Charged twice.",
                 "Sorry about that.",
+                0.82,
+                false,
+                false,
                 List.of(new SourceRef(7L, "Refunds for duplicate charges"))
         );
     }
@@ -60,6 +63,9 @@ class TicketEnrichmentServiceTest {
         assertThat(ticket.getSentiment()).isEqualTo("NEGATIVE");
         assertThat(ticket.getSummary()).isEqualTo("Charged twice.");
         assertThat(ticket.getSuggestedReply()).isEqualTo("Sorry about that.");
+        assertThat(ticket.getConfidence()).isEqualTo(0.82);
+        assertThat(ticket.getNeedsHuman()).isFalse();
+        assertThat(ticket.getKnowledgeGap()).isFalse();
         assertThat(ticket.getSources()).hasSize(1);
         assertThat(ticket.getStatus()).isEqualTo(TicketStatus.ENRICHED);
     }
@@ -79,7 +85,7 @@ class TicketEnrichmentServiceTest {
         when(repository.findById(99L)).thenReturn(Optional.empty());
 
         boolean applied = service.apply(
-                new TicketEnrichedEvent("e", "99", "Billing", "LOW", "NEUTRAL", "s", "r", List.of()));
+                new TicketEnrichedEvent("e", "99", "Billing", "LOW", "NEUTRAL", "s", "r", 0.9, false, false, List.of()));
 
         assertThat(applied).isFalse();
         verify(repository, never()).save(any());
@@ -88,7 +94,7 @@ class TicketEnrichmentServiceTest {
     @Test
     void applySkipsUnusableTicketId() {
         boolean applied = service.apply(
-                new TicketEnrichedEvent("e", "not-a-number", "Billing", "LOW", "NEUTRAL", "s", "r", List.of()));
+                new TicketEnrichedEvent("e", "not-a-number", "Billing", "LOW", "NEUTRAL", "s", "r", 0.9, false, false, List.of()));
 
         assertThat(applied).isFalse();
         verify(repository, never()).save(any());

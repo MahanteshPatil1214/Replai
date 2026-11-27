@@ -20,8 +20,20 @@ public record TicketResponse(
         String sentiment,
         String summary,
         String suggestedReply,
+        Double confidence,
+        Boolean needsHuman,
+        Boolean knowledgeGap,
+        Long teamId,
+        Long assigneeId,
         List<SourceRef> sources,
-        Instant createdAt
+        String finalReply,
+        String draftAction,
+        Instant slaDueAt,
+        Boolean slaBreached,
+        Instant createdAt,
+        Instant assignedAt,
+        Instant resolvedAt,
+        Long resolvedBy
 ) {
 
     public static TicketResponse from(Ticket ticket) {
@@ -36,8 +48,20 @@ public record TicketResponse(
                 ticket.getSentiment(),
                 ticket.getSummary(),
                 ticket.getSuggestedReply(),
+                ticket.getConfidence(),
+                ticket.getNeedsHuman(),
+                ticket.getKnowledgeGap(),
+                ticket.getTeamId(),
+                ticket.getAssigneeId(),
                 ticket.getSources(),
-                ticket.getCreatedAt()
+                ticket.getFinalReply(),
+                ticket.getDraftAction(),
+                ticket.getSlaDueAt(),
+                ticket.getSlaBreached(),
+                ticket.getCreatedAt(),
+                ticket.getAssignedAt(),
+                ticket.getResolvedAt(),
+                ticket.getResolvedBy()
         );
     }
 }

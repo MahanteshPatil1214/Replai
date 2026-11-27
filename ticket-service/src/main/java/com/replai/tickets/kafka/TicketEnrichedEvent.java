@@ -15,6 +15,9 @@ public record TicketEnrichedEvent(
         String sentiment,
         String summary,
         String suggestedReply,
+        Double confidence,
+        Boolean needsHuman,
+        Boolean knowledgeGap,
         List<SourceRef> sources
 ) {
 }
