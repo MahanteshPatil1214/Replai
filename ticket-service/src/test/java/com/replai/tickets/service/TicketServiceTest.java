@@ -25,13 +25,15 @@ class TicketServiceTest {
 
     private TicketRepository repository;
     private TicketEventProducer producer;
+    private RoutingService routingService;
     private TicketService service;
 
     @BeforeEach
     void setUp() {
         repository = Mockito.mock(TicketRepository.class);
         producer = Mockito.mock(TicketEventProducer.class);
-        service = new TicketService(repository, producer);
+        routingService = Mockito.mock(RoutingService.class);
+        service = new TicketService(repository, producer, routingService);
 
         when(repository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -82,5 +84,56 @@ class TicketServiceTest {
         TicketResponse response = service.updateStatus(1L, "RESOLVED");
 
         assertThat(response.status()).isEqualTo("RESOLVED");
+    }
+
+    @Test
+    void listPassesTheFiltersThroughToTheRepository() {
+        when(repository.search(TicketStatus.NEEDS_TRIAGE, 3L, "CRITICAL", 7L))
+                .thenReturn(java.util.List.of());
+
+        service.findAll("needs_triage", 3L, "critical", 7L);
+
+        verify(repository).search(TicketStatus.NEEDS_TRIAGE, 3L, "CRITICAL", 7L);
+    }
+
+    @Test
+    void listRejectsAnUnknownStatusFilter() {
+        assertThatThrownBy(() -> service.findAll("banana", null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("banana");
+    }
+
+    @Test
+    void assignUsesTheRouterAndSavesTheTicket() {
+        Ticket ticket = new Ticket();
+        ticket.setCustomerEmail("a@b.com");
+        ticket.setSubject("s");
+        ticket.setMessage("m");
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+        when(routingService.assign(ticket, 3L, 12L)).thenAnswer(invocation -> {
+            ticket.setTeamId(3L);
+            ticket.setAssigneeId(12L);
+            return true;
+        });
+
+        TicketResponse response = service.assign(1L, 3L, 12L);
+
+        assertThat(response.teamId()).isEqualTo(3L);
+        assertThat(response.assigneeId()).isEqualTo(12L);
+        verify(repository).save(ticket);
+    }
+
+    @Test
+    void assignRejectsAnEmployeeOutsideTheTeam() {
+        Ticket ticket = new Ticket();
+        ticket.setCustomerEmail("a@b.com");
+        ticket.setSubject("s");
+        ticket.setMessage("m");
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+        when(routingService.assign(ticket, 4L, 12L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.assign(1L, 4L, 12L))
+                .isInstanceOf(InvalidAssignmentException.class);
+        verify(repository, never()).save(any(Ticket.class));
     }
 }

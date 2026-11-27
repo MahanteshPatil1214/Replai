@@ -8,7 +8,8 @@ import jakarta.validation.constraints.Pattern;
  */
 public record UpdateStatusRequest(
         @NotBlank(message = "status is required")
-        @Pattern(regexp = "OPEN|ENRICHED|RESOLVED", message = "status must be OPEN, ENRICHED or RESOLVED")
+        @Pattern(regexp = "OPEN|NEEDS_TRIAGE|ASSIGNED|IN_PROGRESS|RESOLVED",
+                message = "status must be OPEN, NEEDS_TRIAGE, ASSIGNED, IN_PROGRESS or RESOLVED")
         String status
 ) {
 }

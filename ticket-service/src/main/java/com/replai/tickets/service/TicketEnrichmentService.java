@@ -2,7 +2,6 @@ package com.replai.tickets.service;
 
 import com.replai.tickets.kafka.TicketEnrichedEvent;
 import com.replai.tickets.model.Ticket;
-import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +20,11 @@ public class TicketEnrichmentService {
     private static final Logger log = LoggerFactory.getLogger(TicketEnrichmentService.class);
 
     private final TicketRepository ticketRepository;
+    private final RoutingService routingService;
 
-    public TicketEnrichmentService(TicketRepository ticketRepository) {
+    public TicketEnrichmentService(TicketRepository ticketRepository, RoutingService routingService) {
         this.ticketRepository = ticketRepository;
+        this.routingService = routingService;
     }
 
     @Transactional
@@ -51,11 +52,14 @@ public class TicketEnrichmentService {
         ticket.setNeedsHuman(event.needsHuman());
         ticket.setKnowledgeGap(event.knowledgeGap());
         ticket.setSources(event.sources());
-        ticket.setStatus(TicketStatus.ENRICHED);
+
+        // Store the AI result, then let the router decide where it goes and
+        // start the SLA counter (project.md flow steps 7-8).
+        routingService.route(ticket);
 
         ticketRepository.save(ticket);
-        log.info("Ticket {} enriched (eventId={}, {} sources)",
-                ticket.getId(), event.eventId(),
+        log.info("Ticket {} enriched (eventId={}, confidence={}, status={}, {} sources)",
+                ticket.getId(), event.eventId(), ticket.getConfidence(), ticket.getStatus(),
                 event.sources() == null ? 0 : event.sources().size());
         return true;
     }

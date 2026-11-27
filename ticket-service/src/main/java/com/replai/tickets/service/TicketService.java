@@ -22,10 +22,15 @@ public class TicketService {
 
     private final TicketRepository ticketRepository;
     private final TicketEventProducer eventProducer;
+    private final RoutingService routingService;
 
-    public TicketService(TicketRepository ticketRepository, TicketEventProducer eventProducer) {
+    public TicketService(
+            TicketRepository ticketRepository,
+            TicketEventProducer eventProducer,
+            RoutingService routingService) {
         this.ticketRepository = ticketRepository;
         this.eventProducer = eventProducer;
+        this.routingService = routingService;
     }
 
     @Transactional
@@ -52,8 +57,13 @@ public class TicketService {
     }
 
     @Transactional(readOnly = true)
-    public List<TicketResponse> findAll() {
-        return ticketRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<TicketResponse> findAll(String status, Long team, String priority, Long assignee) {
+        return ticketRepository.search(
+                        parseStatus(status),
+                        team,
+                        priority == null || priority.isBlank() ? null : priority.trim().toUpperCase(),
+                        assignee)
+                .stream()
                 .map(TicketResponse::from)
                 .toList();
     }
@@ -63,11 +73,36 @@ public class TicketService {
         return TicketResponse.from(getOrThrow(id));
     }
 
+    /**
+     * Manual assignment from the triage board: the ticket keeps its AI result
+     * but moves to a team and an employee chosen by a lead.
+     */
+    @Transactional
+    public TicketResponse assign(Long id, Long teamId, Long employeeId) {
+        Ticket ticket = getOrThrow(id);
+        if (!routingService.assign(ticket, teamId, employeeId)) {
+            throw new InvalidAssignmentException(teamId, employeeId);
+        }
+        return TicketResponse.from(ticketRepository.save(ticket));
+    }
+
     @Transactional
     public TicketResponse updateStatus(Long id, String status) {
         Ticket ticket = getOrThrow(id);
         ticket.setStatus(TicketStatus.valueOf(status));
         return TicketResponse.from(ticketRepository.save(ticket));
+    }
+
+    private TicketStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return TicketStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "unknown status '" + status + "' - use OPEN, NEEDS_TRIAGE, ASSIGNED, IN_PROGRESS or RESOLVED");
+        }
     }
 
     protected Ticket getOrThrow(Long id) {

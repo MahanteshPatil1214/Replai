@@ -3,7 +3,6 @@ package com.replai.tickets.service;
 import com.replai.tickets.kafka.TicketEnrichedEvent;
 import com.replai.tickets.model.SourceRef;
 import com.replai.tickets.model.Ticket;
-import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,13 +20,15 @@ import static org.mockito.Mockito.when;
 class TicketEnrichmentServiceTest {
 
     private TicketRepository repository;
+    private RoutingService routingService;
     private TicketEnrichmentService service;
     private Ticket ticket;
 
     @BeforeEach
     void setUp() {
         repository = Mockito.mock(TicketRepository.class);
-        service = new TicketEnrichmentService(repository);
+        routingService = Mockito.mock(RoutingService.class);
+        service = new TicketEnrichmentService(repository, routingService);
 
         ticket = new Ticket();
         ticket.setCustomerEmail("user@example.com");
@@ -54,7 +55,7 @@ class TicketEnrichmentServiceTest {
     }
 
     @Test
-    void applyFillsTheAiColumnsAndMarksTheTicketEnriched() {
+    void applyFillsTheAiColumnsAndHandsTheTicketToTheRouter() {
         boolean applied = service.apply(event());
 
         assertThat(applied).isTrue();
@@ -67,7 +68,8 @@ class TicketEnrichmentServiceTest {
         assertThat(ticket.getNeedsHuman()).isFalse();
         assertThat(ticket.getKnowledgeGap()).isFalse();
         assertThat(ticket.getSources()).hasSize(1);
-        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.ENRICHED);
+
+        verify(routingService).route(ticket);
     }
 
     @Test
@@ -75,7 +77,6 @@ class TicketEnrichmentServiceTest {
         service.apply(event());
         service.apply(event());
 
-        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.ENRICHED);
         assertThat(ticket.getSources()).hasSize(1);
         verify(repository, Mockito.times(2)).save(ticket);
     }
@@ -89,6 +90,7 @@ class TicketEnrichmentServiceTest {
 
         assertThat(applied).isFalse();
         verify(repository, never()).save(any());
+        verify(routingService, never()).route(any());
     }
 
     @Test

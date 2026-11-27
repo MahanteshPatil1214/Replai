@@ -1,5 +1,6 @@
 package com.replai.tickets.controller;
 
+import com.replai.tickets.service.InvalidAssignmentException;
 import com.replai.tickets.service.TicketNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(TicketNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(TicketNotFoundException ex) {
         return body(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidAssignmentException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidAssignment(InvalidAssignmentException ex) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
