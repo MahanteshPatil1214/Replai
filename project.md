@@ -1,17 +1,24 @@
 # Replai: AI Customer Support Platform
 
-A beginner-friendly hybrid microservice project using **Java**, **Python**, **Kafka**, **GenAI**, and **Docker**.
+A hybrid microservice project using **Java**, **Python**, **Kafka**, **GenAI**, **React**, and **Docker**.
 
-A customer submits a support ticket. The system uses an LLM to classify it, detect its priority, and draft a reply. The result appears in the UI.
+A customer submits a ticket. The system automatically **prioritizes** it, **routes** it to the right team (Software, Infrastructure, Billing, and so on), starts an **SLA counter**, drafts a **knowledge-base-grounded reply**, and tracks **which team and employee resolve the most issues**.
+
+> Positioning: open-source support AI that shows its sources, admits when it doesn't know, and learns from your agents.
 
 ---
 
-## 1. Goals
+## 1. What Makes Replai Different
 
-- Learn how Java and Python services work together
-- Learn event-driven communication with Kafka
-- Integrate an LLM into a real workflow
-- Run everything with a single `docker compose up`
+| Feature | What it does |
+|---|---|
+| **Trustworthy AI** | Every reply shows the knowledge base articles it used ("Based on") and a confidence score |
+| **Honest handoff** | Low confidence means no guessing. The ticket goes to a human triage queue |
+| **Knowledge gap detection** | Tickets with no matching article are flagged, so you know which help article to write next |
+| **Learns from agents** | Tracks whether agents accept, edit, or reject each AI draft, and shows the acceptance rate |
+| **Auto triage and routing** | Priority and team are decided automatically from the ticket text |
+| **SLA counters** | Every ticket has a deadline based on priority, with live "days open" and breach tracking |
+| **Performance analytics** | Resolution counts and times per team and per employee |
 
 ---
 
@@ -23,23 +30,28 @@ A customer submits a support ticket. The system uses an LLM to classify it, dete
 │ (React)  │◄────│    (Java)      │◄────│       │◄────│   (Python)   │
 └──────────┘     └───────┬────────┘     └───────┘     └──────┬───────┘
                          │                                   │
-                    ┌────▼─────┐                        ┌────▼────┐
-                    │ Postgres │                        │ LLM API │
-                    └──────────┘                        └─────────┘
+                    ┌────▼─────────────────────────────┐ ┌───▼─────┐
+                    │ Postgres + pgvector              │ │ LLM API │
+                    │ tickets, teams, employees, KB    │ └─────────┘
+                    └──────────────────────────────────┘
 ```
 
-### Flow
+### End-to-end flow
 
-1. User creates a ticket in the UI
-2. `ticket-service` saves it to Postgres and publishes `ticket.created`
-3. `ai-service` consumes the event
-4. `ai-service` searches the **knowledge base** (pgvector) for the most relevant articles (RAG)
-5. `ai-service` calls the LLM with the ticket plus the retrieved articles
-6. `ai-service` publishes `ticket.enriched` (including the sources used)
-7. `ticket-service` consumes it and updates the ticket
-8. UI shows category, priority, sentiment, the suggested reply, and the knowledge base articles it was based on
+1. Customer creates a ticket in the UI
+2. `ticket-service` saves it (status `OPEN`) and publishes `ticket.created`
+3. `ai-service` consumes it and searches the knowledge base (RAG)
+4. `ai-service` calls the LLM to get category, priority, sentiment, summary, and a draft reply
+5. `ai-service` computes a **confidence score** and a **knowledge gap** flag
+6. `ai-service` publishes `ticket.enriched`
+7. `ticket-service` consumes it and **routes** the ticket:
+   - Confidence is high: map category to a team, pick an employee, set status `ASSIGNED`
+   - Confidence is low or `needsHuman`: put it in the **Triage queue** (status `NEEDS_TRIAGE`)
+8. `ticket-service` sets the **SLA deadline** from the priority
+9. The employee works the ticket and resolves it, choosing **Accept**, **Edit**, or **Reject** for the AI draft
+10. Analytics update from the resolved ticket
 
-> The knowledge base lives in the same Postgres instance, using the **pgvector** extension. No extra service is needed.
+> If the AI service is down, a scheduled job moves tickets stuck in `OPEN` for more than 2 minutes to the Triage queue with priority `MEDIUM`, so nothing is lost.
 
 ---
 
@@ -47,11 +59,11 @@ A customer submits a support ticket. The system uses an LLM to classify it, dete
 
 | Service | Language | Responsibility |
 |---|---|---|
-| `ticket-service` | Java (Spring Boot) | REST API, ticket storage, Kafka producer and consumer |
-| `ai-service` | Python (FastAPI + Kafka consumer) | Consumes tickets, retrieves knowledge base articles (RAG), calls the LLM, publishes results, manages KB articles |
-| `web` | React (Vite) | Modern UI for creating and viewing tickets and managing the knowledge base |
+| `ticket-service` | Java (Spring Boot) | REST API, tickets, teams, employees, routing, assignment, SLA, analytics, Kafka producer and consumer |
+| `ai-service` | Python (FastAPI + Kafka consumer) | Consumes tickets, RAG retrieval, LLM call, confidence score, publishes results, manages KB articles |
+| `web` | React (Vite) | Customer form, team queues, triage board, ticket detail, analytics, knowledge base |
 
-**Infrastructure (Docker):** Kafka (KRaft mode), Kafka UI, Postgres with the pgvector extension (use the `pgvector/pgvector:pg16` image)
+**Infrastructure (Docker):** Kafka (KRaft mode), Kafka UI, Postgres with pgvector (`pgvector/pgvector:pg16`)
 
 ---
 
@@ -60,7 +72,7 @@ A customer submits a support ticket. The system uses an LLM to classify it, dete
 | Topic | Producer | Consumer | Purpose |
 |---|---|---|---|
 | `ticket.created` | ticket-service | ai-service | New ticket needs analysis |
-| `ticket.enriched` | ai-service | ticket-service | AI results ready |
+| `ticket.enriched` | ai-service | ticket-service | AI results ready for routing |
 
 Use `ticketId` as the message key so events for one ticket stay in order.
 
@@ -71,8 +83,8 @@ Use `ticketId` as the message key so events for one ticket stay in order.
   "eventId": "uuid",
   "ticketId": "123",
   "customerEmail": "user@example.com",
-  "subject": "Payment failed",
-  "message": "I was charged twice for my order.",
+  "subject": "Server is down",
+  "message": "Our production API returns 503 errors since morning.",
   "createdAt": "2026-11-26T10:00:00Z"
 }
 ```
@@ -83,22 +95,84 @@ Use `ticketId` as the message key so events for one ticket stay in order.
 {
   "eventId": "uuid",
   "ticketId": "123",
-  "category": "Billing",
-  "priority": "HIGH",
+  "category": "Infrastructure",
+  "priority": "CRITICAL",
   "sentiment": "NEGATIVE",
-  "summary": "Customer was charged twice for one order.",
-  "suggestedReply": "Hi, we're sorry about the double charge...",
+  "summary": "Production API is returning 503 errors.",
+  "suggestedReply": "Hi, we're sorry about the outage. Our infrastructure team is investigating...",
+  "confidence": 0.82,
+  "needsHuman": false,
+  "knowledgeGap": false,
   "sources": [
-    { "articleId": 7, "title": "Refunds for duplicate charges" }
+    { "articleId": 4, "title": "API outage troubleshooting" }
   ]
 }
 ```
 
 ---
 
-## 5. Database (Postgres)
+## 5. Triage and Routing Rules
 
-**Table: `tickets`**
+### Priority levels
+
+| Priority | Examples |
+|---|---|
+| `CRITICAL` | Production down, data loss, security issue, many users affected |
+| `HIGH` | Major feature broken, payment failed, blocked customer |
+| `MEDIUM` | Bug with a workaround, account problem |
+| `LOW` | Questions, feature requests, minor issues |
+
+### Category to team
+
+| AI category | Team |
+|---|---|
+| Software | Software Team |
+| Infrastructure | Infrastructure Team |
+| Billing | Billing Team |
+| Account | Support Team |
+| General | Support Team |
+
+Stored in a `category_routing` table so it can be changed without code.
+
+### Assignment inside a team
+
+1. Pick the employee in that team with the **fewest open tickets**
+2. Queues are ordered by priority first (`CRITICAL` to `LOW`), then oldest first
+
+### Triage queue
+
+Tickets go to `NEEDS_TRIAGE` when:
+- `needsHuman` is true (confidence below the threshold)
+- The AI service did not answer in time
+- The category is unknown
+
+A team lead assigns these manually from the Triage board.
+
+---
+
+## 6. SLA and Counters
+
+| Priority | Resolve within |
+|---|---|
+| `CRITICAL` | 4 hours |
+| `HIGH` | 1 day |
+| `MEDIUM` | 3 days |
+| `LOW` | 7 days |
+
+Stored in an `sla_policies` table.
+
+**Counters shown in the UI:**
+- **Open tickets:** "Day 2 of 3" and time remaining until `sla_due_at`
+- **Resolved tickets:** time taken to resolve (for example "1 day 4 hours")
+- **Breached:** red badge when `now > sla_due_at` and the ticket is not resolved
+
+A scheduled job runs every minute and sets `sla_breached = true` on overdue tickets.
+
+---
+
+## 7. Database (Postgres)
+
+### `tickets` (ticket-service)
 
 | Column | Type |
 |---|---|
@@ -106,39 +180,48 @@ Use `ticketId` as the message key so events for one ticket stay in order.
 | customer_email | VARCHAR |
 | subject | VARCHAR |
 | message | TEXT |
-| status | VARCHAR (`OPEN`, `ENRICHED`, `RESOLVED`) |
+| status | VARCHAR (`OPEN`, `NEEDS_TRIAGE`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`) |
 | category | VARCHAR |
 | priority | VARCHAR |
 | sentiment | VARCHAR |
 | summary | TEXT |
+| team_id | BIGINT (FK) |
+| assignee_id | BIGINT (FK, employee) |
 | suggested_reply | TEXT |
-| sources | JSONB (articles used for the reply) |
+| final_reply | TEXT |
+| draft_action | VARCHAR (`ACCEPTED`, `EDITED`, `REJECTED`) |
+| confidence | DOUBLE |
+| needs_human | BOOLEAN |
+| knowledge_gap | BOOLEAN |
+| sources | JSONB |
+| sla_due_at | TIMESTAMP |
+| sla_breached | BOOLEAN |
 | created_at | TIMESTAMP |
+| assigned_at | TIMESTAMP |
+| resolved_at | TIMESTAMP |
+| resolved_by | BIGINT (FK, employee) |
 
-**Table: `kb_articles`** (owned by `ai-service`)
+### Supporting tables (ticket-service)
 
-| Column | Type |
+| Table | Columns |
 |---|---|
-| id | BIGSERIAL (PK) |
-| title | VARCHAR |
-| content | TEXT |
-| created_at | TIMESTAMP |
+| `teams` | id, name (Software Team, Infrastructure Team, Billing Team, Support Team) |
+| `employees` | id, name, email, team_id, role (`AGENT`, `LEAD`) |
+| `category_routing` | category, team_id |
+| `sla_policies` | priority, resolve_within_hours |
 
-**Table: `kb_chunks`** (owned by `ai-service`)
+Seed 4 teams and about 8 employees on startup.
 
-| Column | Type |
-|---|---|
-| id | BIGSERIAL (PK) |
-| article_id | BIGINT (FK to `kb_articles`) |
-| chunk_text | TEXT |
-| embedding | VECTOR(384) |
+### Knowledge base (ai-service)
+
+**`kb_articles`:** id, title, content, created_at
+
+**`kb_chunks`:** id, article_id (FK), chunk_text, embedding `VECTOR(384)`
 
 Enable the extension once: `CREATE EXTENSION IF NOT EXISTS vector;`
 
-Search the closest chunks with:
-
 ```sql
-SELECT article_id, chunk_text
+SELECT article_id, chunk_text, 1 - (embedding <=> :query_embedding) AS similarity
 FROM kb_chunks
 ORDER BY embedding <=> :query_embedding
 LIMIT 3;
@@ -146,32 +229,51 @@ LIMIT 3;
 
 ---
 
-## 6. REST API (ticket-service)
+## 8. REST API
+
+### ticket-service
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/tickets` | Create a ticket |
-| GET | `/api/tickets` | List all tickets |
-| GET | `/api/tickets/{id}` | Get a single ticket |
-| PATCH | `/api/tickets/{id}/status` | Update status |
+| POST | `/api/tickets` | Create a ticket (customer) |
+| GET | `/api/tickets` | List tickets. Filters: `status`, `team`, `priority`, `assignee` |
+| GET | `/api/tickets/{id}` | Ticket detail with AI results and SLA info |
+| PATCH | `/api/tickets/{id}/assign` | Assign to a team and employee (used for triage) |
+| PATCH | `/api/tickets/{id}/status` | Move to `IN_PROGRESS` and so on |
+| POST | `/api/tickets/{id}/resolve` | Resolve with `finalReply` and `draftAction` |
+| GET | `/api/teams` | List teams |
+| GET | `/api/employees` | List employees (filter by team) |
 
-## 6.1 REST API (ai-service, knowledge base)
+**Analytics**
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/kb/articles` | Add an article (chunks and embeds it automatically) |
-| GET | `/kb/articles` | List all articles |
+| GET | `/api/analytics/summary` | Open, resolved, average resolution time, SLA met % |
+| GET | `/api/analytics/teams` | Per team: solved, open, average resolution time, SLA met % |
+| GET | `/api/analytics/employees?range=7d` | Leaderboard: solved count and average resolution time per employee |
+| GET | `/api/analytics/priority` | Open tickets by priority |
+| GET | `/api/analytics/ai` | Accepted, edited, rejected counts and acceptance rate |
+| GET | `/api/analytics/knowledge-gaps` | Tickets the knowledge base could not answer |
+
+### ai-service
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/kb/articles` | Add an article (chunks and embeds it) |
+| GET | `/kb/articles` | List articles |
 | DELETE | `/kb/articles/{id}` | Delete an article and its chunks |
 | GET | `/kb/search?q=...` | Test search, returns the closest chunks |
 
+> For the MVP there is no login. The UI has a simple "Acting as" dropdown to switch between employees.
+
 ---
 
-## 7. AI Service Logic
+## 9. AI Service Logic
 
-One prompt returns structured JSON, grounded in knowledge base articles:
+### Prompt (one call returns JSON)
 
 ```
-You are a customer support assistant.
+You are a customer support triage assistant.
 Use ONLY the knowledge base articles below to write the reply.
 If the articles don't cover the question, say a human agent will follow up.
 
@@ -183,121 +285,159 @@ Ticket:
 {message}
 
 Return ONLY JSON with:
-category (Billing | Technical | Account | General),
-priority (LOW | MEDIUM | HIGH),
+category (Software | Infrastructure | Billing | Account | General),
+priority (LOW | MEDIUM | HIGH | CRITICAL),
 sentiment (POSITIVE | NEUTRAL | NEGATIVE),
 summary (one sentence),
 suggestedReply (polite, short).
 ```
 
-Steps:
+### Steps
+
 1. Consume `ticket.created`
 2. Embed the ticket text (subject + message)
-3. Search `kb_chunks` for the top 3 closest chunks (RAG retrieval)
-4. Build the prompt with the retrieved chunks and call the LLM
-5. Parse the JSON safely (strip code fences, handle errors)
-6. Publish `ticket.enriched` with the `sources` used
+3. Retrieve the top 3 closest chunks from `kb_chunks`
+4. Call the LLM with the ticket and the chunks
+5. Parse the JSON safely (strip code fences, handle invalid output)
+6. Compute **confidence** and flags (below)
+7. Publish `ticket.enriched` with `sources`
 
-### Knowledge Base and RAG
+### Confidence and knowledge gaps
 
-**What RAG means here:** instead of letting the LLM guess, the AI first looks up your company's own help articles and writes the reply based on them.
+- `confidence` = the similarity score of the best retrieved chunk (0 to 1)
+- If `confidence < 0.45` (configurable): `needsHuman = true` and `knowledgeGap = true`, and the suggested reply is replaced with a "a human agent will follow up" message
+- Safe fallback if the LLM returns bad JSON: category `General`, priority `MEDIUM`, `needsHuman = true`
 
-**Adding an article (ingestion):**
+### RAG ingestion
+
 1. `POST /kb/articles` with a title and content
-2. Split the content into chunks (about 300 to 500 characters, with a small overlap)
-3. Create an embedding for each chunk
-4. Store the chunk text and embedding in `kb_chunks`
+2. Split into chunks (about 300 to 500 characters, small overlap)
+3. Embed each chunk with `sentence-transformers` (`all-MiniLM-L6-v2`, 384 dimensions)
+4. Store in `kb_chunks`
 
-**Answering a ticket (retrieval):**
-1. Embed the ticket text with the same embedding model
-2. Run the similarity query on `kb_chunks` (see the SQL in the database section)
-3. Pass the top 3 chunks to the LLM prompt
-4. Return the matching article titles as `sources`
-
-**Embedding model:** use `sentence-transformers` with `all-MiniLM-L6-v2`. It is free, runs locally in the container, and produces 384-dimension vectors (matching `VECTOR(384)`). The same model must be used for both ingestion and search.
-
-**Seed data:** start with 5 to 10 short articles such as refund policy, password reset, shipping times, and payment failures.
+Use the same embedding model for ingestion and search. Seed 8 to 10 short articles (refund policy, password reset, API errors, server outage, and so on).
 
 ---
 
-## 8. UI
+## 10. Analytics: What the Dashboard Shows
+
+- **Overview:** open tickets, resolved tickets, average resolution time, SLA met %
+- **Team performance:** tickets solved per team, with average resolution time
+- **Employee leaderboard:** who solved the most tickets (7 days, 30 days, all time)
+- **Open by priority:** how many `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` tickets are waiting
+- **SLA:** breached tickets and the oldest open tickets
+- **AI quality:** acceptance rate of drafts (accepted, edited, rejected)
+- **Knowledge gaps:** topics customers ask about that have no article yet
+
+All numbers come from the `tickets` table, so no extra services are needed.
+
+---
+
+## 11. UI
 
 **Stack:** React (Vite), TypeScript, Tailwind CSS, React Router, TanStack Query
 
 **Typography-led design (not a generic admin template):**
 - Headings: serif (Fraunces or Instrument Serif)
 - Body: Geist or Inter Tight
-- IDs and timestamps: JetBrains Mono
-- Warm off-white background, near-black text, one accent color for AI-generated content
+- IDs, timestamps, and counters: JetBrains Mono
+- Warm off-white background, near-black text, one accent color used only for AI-generated content
 - Hairline borders, generous spacing, light and dark mode
 
 **Screens:**
 1. **New ticket form:** clean customer-facing form
-2. **Inbox:** list of tickets with priority and category tags
-3. **Ticket detail:** original message plus an AI panel (summary, sentiment, suggested reply with a Copy button, and a "Based on" list showing the knowledge base articles used)
-4. **Knowledge base:** list, add, and delete articles, with a small search box to test what the AI would find
+2. **Team queue:** tickets for one team, sorted by priority, with SLA counters
+3. **Triage board:** `NEEDS_TRIAGE` tickets with an assign-to-team-and-employee control
+4. **Ticket detail:** original message, AI panel (summary, sentiment, confidence badge, "Based on" sources, suggested reply), SLA countdown, and **Accept / Edit / Reject** with a Resolve button
+5. **Analytics:** overview, team and employee leaderboards, priority breakdown, AI acceptance rate
+6. **Knowledge gaps:** list of unanswered topics with a button to create an article from a ticket
+7. **Knowledge base:** list, add, and delete articles, plus a test search box
 
 ---
 
-## 9. Folder Structure
+## 12. Folder Structure
 
 ```
 replai/
 ├── docker-compose.yml
 ├── project.md
+├── agent.md
 ├── contracts/              # shared event JSON examples
 ├── ticket-service/         # Java Spring Boot
-│   ├── src/
+│   ├── src/main/java/.../
+│   │   ├── controller/
+│   │   ├── service/        # routing, assignment, SLA, analytics
+│   │   ├── repository/
+│   │   ├── kafka/          # producer and consumer
+│   │   └── scheduler/      # SLA breach job, stuck-ticket job
+│   ├── src/main/resources/ # application.yml, seed data
 │   ├── pom.xml
 │   └── Dockerfile
 ├── ai-service/             # Python
 │   ├── app/
 │   │   ├── consumer.py     # Kafka consumer and producer
 │   │   ├── llm.py          # LLM call and JSON parsing
-│   │   ├── rag/            # chunking, embeddings, vector search
+│   │   ├── rag/            # chunking, embeddings, vector search, confidence
 │   │   └── kb_api.py       # knowledge base endpoints
 │   ├── seed/               # starter knowledge base articles
 │   ├── requirements.txt
 │   └── Dockerfile
 └── web/                    # React (Vite)
+    ├── src/
+    │   ├── api/
+    │   ├── pages/
+    │   └── components/
     └── Dockerfile
 ```
 
 ---
 
-## 10. Tech Stack
+## 13. Tech Stack
 
 | Area | Tool |
 |---|---|
-| Java service | Spring Boot, Spring Web, Spring Data JPA, Spring Kafka |
+| Java service | Spring Boot, Spring Web, Spring Data JPA, Spring Kafka, Spring Scheduling |
 | Python service | `confluent-kafka` or `aiokafka`, an LLM SDK (Anthropic / OpenAI), FastAPI |
-| RAG | `sentence-transformers` (embeddings), `pgvector` (vector search), `psycopg` |
+| RAG | `sentence-transformers`, `pgvector`, `psycopg` |
 | Messaging | Apache Kafka (KRaft) |
-| Database | PostgreSQL with pgvector (`pgvector/pgvector:pg16`) |
-| Frontend | React (Vite), TypeScript, Tailwind, React Router |
+| Database | PostgreSQL with pgvector |
+| Frontend | React (Vite), TypeScript, Tailwind, React Router, TanStack Query, a chart library (Recharts) |
 | Containers | Docker, Docker Compose |
 | Debugging | Kafka UI (`http://localhost:8080`) |
 
 ---
 
-## 11. Build Order
+## 14. Build Order (phases)
 
-1. **Infra:** `docker-compose.yml` with Kafka, Kafka UI, Postgres
-2. **ticket-service:** create and list tickets, save to Postgres
-3. **Kafka producer:** publish `ticket.created` after saving
-4. **ai-service:** consume the event and print it
-5. **LLM call:** classify, set priority, draft a reply
-6. **Publish result:** send `ticket.enriched`
-7. **Kafka consumer in ticket-service:** update the ticket
-8. **Knowledge base:** enable pgvector, create `kb_articles` and `kb_chunks`, add the `/kb/articles` endpoints
-9. **Ingestion:** chunk and embed articles, load the seed articles
-10. **RAG in the AI flow:** retrieve the top 3 chunks and add them to the prompt, then return `sources`
-11. **UI:** form, inbox, ticket detail (with "Based on" sources), knowledge base screen
-12. **Dockerize everything** and run with one command
+**Phase 1: Core loop**
+1. `docker-compose.yml` with Kafka, Kafka UI, Postgres (pgvector)
+2. ticket-service: create and list tickets
+3. Publish `ticket.created`
+4. ai-service: consume, call the LLM, publish `ticket.enriched`
+5. ticket-service: consume `ticket.enriched` and update the ticket
+
+**Phase 2: Routing and SLA**
+6. Add `teams`, `employees`, `category_routing`, `sla_policies` with seed data
+7. Route by category, assign the least-loaded employee
+8. Set `sla_due_at`, add the breach scheduler and the stuck-ticket job
+9. Triage queue and manual assign endpoint
+
+**Phase 3: Trustworthy AI**
+10. Knowledge base tables, `/kb` endpoints, ingestion, seed articles
+11. RAG retrieval, `sources`, confidence score, `needsHuman`, `knowledgeGap`
+
+**Phase 4: Learning from agents and analytics**
+12. Resolve endpoint with `draftAction` and `finalReply`
+13. Analytics endpoints (summary, teams, employees, priority, AI, knowledge gaps)
+
+**Phase 5: UI and polish**
+14. Customer form, team queue, triage board, ticket detail
+15. Analytics dashboard and knowledge gaps screens
+16. Dockerize everything and run with one command
 
 ---
 
-## 12. How to Run (target)
+## 15. How to Run (target)
 
 ```bash
 # 1. Add your LLM key
@@ -309,31 +449,64 @@ docker compose up --build
 # 3. Open
 # UI:       http://localhost:3000
 # API:      http://localhost:8081/api/tickets
+# AI API:   http://localhost:8000
 # Kafka UI: http://localhost:8080
-# Postgres: localhost:5433 (host port, 5432 was already taken)
 ```
 
 ---
 
-## 13. Future Improvements (optional)
+## 16. Future Improvements (optional)
 
+- Login and roles (agent, lead, admin)
 - Retry topic and dead-letter topic for failed LLM calls
 - Idempotency check using `eventId`
 - Real-time UI updates with SSE or WebSocket
 - Outbox pattern for reliable publishing
-- Better RAG: re-ranking, hybrid keyword + vector search, and PDF or URL article import
-- Feedback loop: track whether agents accept or edit the suggested reply
-- API gateway, authentication, Redis caching
-- Prometheus and Grafana monitoring
+- Local LLM support (Ollama) for fully private deployments
+- Feed edited replies back into the knowledge base
+- Better RAG: re-ranking, hybrid keyword and vector search, PDF or URL import
+- Email notifications for SLA warnings
+- Redis caching, API gateway, Prometheus and Grafana
 - Scale `ai-service` with multiple replicas (Kafka consumer groups)
 
 ---
 
-## 14. What You'll Learn
+## 17. Later: Making It Sellable (after the MVP works)
+
+Not part of the MVP. Build these only after phases 1 to 5 are done.
+
+**Target customer:** internal IT helpdesks at companies with 50 to 500 employees, and small IT service providers handling tickets for several clients.
+
+**Validate first:** talk to about 10 people who run support or IT at small companies before building more.
+
+| Item | Why it's needed |
+|---|---|
+| Login and roles (admin, lead, agent) | Replaces the "Acting as" dropdown |
+| Multi-tenancy | Many companies on one system, each with separate data (`tenant_id` on every table) |
+| Email-to-ticket and embeddable chat widget | More ways for customers to raise tickets |
+| Billing (Stripe or Razorpay) | Charge per agent per month |
+| Security basics | HTTPS, password hashing, audit logs |
+| Reliability | Backups, retries, dead-letter topic, monitoring |
+| Easy onboarding | A new company set up in minutes |
+
+**Designed now to make this easier later:**
+- Tickets, teams, and employees stay in separate tables
+- Routing and SLA rules live in database tables, not in code
+- All configuration comes from environment variables
+
+**Positioning:** an open-source, self-hostable support platform for small teams, with transparent AI.
+
+**Rollout path:** finish the MVP, add login and multi-tenancy, add email-in and the widget, run 2 or 3 free pilots, then start charging.
+
+---
+
+## 18. What You'll Learn
 
 - Event-driven architecture with Kafka
 - Java and Python communicating without direct coupling
 - Prompting an LLM for structured output
-- Building RAG: chunking, embeddings, and vector search with pgvector
+- Building RAG with pgvector
+- Rule-based routing, assignment, and SLA tracking
+- Writing analytics queries (group by team and employee)
 - Dockerizing a multi-service app
 - Building a polished, typography-focused UI
