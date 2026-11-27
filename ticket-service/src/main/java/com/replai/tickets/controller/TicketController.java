@@ -2,6 +2,7 @@ package com.replai.tickets.controller;
 
 import com.replai.tickets.dto.AssignRequest;
 import com.replai.tickets.dto.CreateTicketRequest;
+import com.replai.tickets.dto.ResolveTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
 import com.replai.tickets.dto.UpdateStatusRequest;
 import com.replai.tickets.service.TicketService;
@@ -52,6 +53,11 @@ public class TicketController {
     @PatchMapping("/{id}/assign")
     public TicketResponse assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request) {
         return ticketService.assign(id, request.teamId(), request.assigneeId());
+    }
+
+    @PostMapping("/{id}/resolve")
+    public TicketResponse resolve(@PathVariable Long id, @Valid @RequestBody ResolveTicketRequest request) {
+        return ticketService.resolve(id, request);
     }
 
     @PatchMapping("/{id}/status")

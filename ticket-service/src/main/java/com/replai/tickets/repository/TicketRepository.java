@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -45,4 +46,21 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             group by t.assigneeId
             """)
     List<Object[]> countOpenTicketsByAssignee(@Param("statuses") Collection<TicketStatus> statuses);
+
+    /** Unresolved tickets whose SLA deadline has passed and are not flagged yet. */
+    @Query("""
+            select t from Ticket t
+            where t.slaDueAt is not null and t.slaDueAt < :now
+              and t.status <> :resolved
+              and (t.slaBreached = false or t.slaBreached is null)
+            """)
+    List<Ticket> findSlaBreaches(@Param("now") Instant now,
+                                 @Param("resolved") TicketStatus resolvedStatus);
+
+    /** Tickets still sitting in one status after the cutoff (stuck-ticket job). */
+    @Query("""
+            select t from Ticket t
+            where t.status = :status and t.createdAt < :cutoff
+            """)
+    List<Ticket> findOlderThan(@Param("status") TicketStatus status, @Param("cutoff") Instant cutoff);
 }

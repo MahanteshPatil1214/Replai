@@ -1,6 +1,7 @@
 package com.replai.tickets.service;
 
 import com.replai.tickets.dto.CreateTicketRequest;
+import com.replai.tickets.dto.ResolveTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
 import com.replai.tickets.kafka.TicketCreatedEvent;
 import com.replai.tickets.kafka.TicketEventProducer;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -83,6 +85,20 @@ public class TicketService {
         if (!routingService.assign(ticket, teamId, employeeId)) {
             throw new InvalidAssignmentException(teamId, employeeId);
         }
+        return TicketResponse.from(ticketRepository.save(ticket));
+    }
+
+    @Transactional
+    public TicketResponse resolve(Long id, ResolveTicketRequest request) {
+        Ticket ticket = getOrThrow(id);
+        Instant now = Instant.now();
+
+        ticket.setStatus(TicketStatus.RESOLVED);
+        ticket.setFinalReply(request.finalReply().trim());
+        ticket.setDraftAction(request.draftAction());
+        ticket.setResolvedBy(request.resolvedBy());
+        ticket.setResolvedAt(now);
+
         return TicketResponse.from(ticketRepository.save(ticket));
     }
 

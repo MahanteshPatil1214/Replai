@@ -115,6 +115,17 @@ public class RoutingService {
         return from.plus(within);
     }
 
+    /**
+     * Safety net when ai-service is down: a ticket still OPEN after the timeout
+     * goes to the triage queue with MEDIUM priority and a fresh SLA deadline,
+     * so nothing is ever lost (project.md end-to-end flow).
+     */
+    public void handStuckTicketToTriage(Ticket ticket) {
+        ticket.setPriority("MEDIUM");
+        ticket.setSlaDueAt(slaDueAt("MEDIUM", Instant.now()));
+        sendToTriage(ticket, "stuck in OPEN without an AI answer");
+    }
+
     private boolean needsHuman(Ticket ticket) {
         return Boolean.TRUE.equals(ticket.getNeedsHuman());
     }

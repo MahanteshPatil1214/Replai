@@ -104,6 +104,25 @@ class TicketServiceTest {
     }
 
     @Test
+    void resolveStoresTheFinalReplyAndTheDraftAction() {
+        Ticket ticket = new Ticket();
+        ticket.setCustomerEmail("a@b.com");
+        ticket.setSubject("s");
+        ticket.setMessage("m");
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+
+        TicketResponse response = service.resolve(1L,
+                new com.replai.tickets.dto.ResolveTicketRequest("Fixed by clearing the cache.", "EDITED", 12L));
+
+        assertThat(response.status()).isEqualTo("RESOLVED");
+        assertThat(response.finalReply()).isEqualTo("Fixed by clearing the cache.");
+        assertThat(response.draftAction()).isEqualTo("EDITED");
+        assertThat(response.resolvedBy()).isEqualTo(12L);
+        assertThat(response.resolvedAt()).isNotNull();
+        verify(repository).save(ticket);
+    }
+
+    @Test
     void assignUsesTheRouterAndSavesTheTicket() {
         Ticket ticket = new Ticket();
         ticket.setCustomerEmail("a@b.com");

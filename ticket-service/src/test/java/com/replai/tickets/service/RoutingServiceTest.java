@@ -135,6 +135,21 @@ class RoutingServiceTest {
     }
 
     @Test
+    void handStuckTicketToTriageUsesMediumPriorityAndALastDeadline() {
+        when(slaPolicyRepository.findByPriority("MEDIUM"))
+                .thenReturn(Optional.of(new SlaPolicy("MEDIUM", 72)));
+
+        Ticket ticket = new Ticket();   // never got an AI answer
+
+        routingService.handStuckTicketToTriage(ticket);
+
+        assertThat(ticket.getStatus()).isEqualTo(TicketStatus.NEEDS_TRIAGE);
+        assertThat(ticket.getPriority()).isEqualTo("MEDIUM");
+        assertThat(ticket.getSlaDueAt()).isNotNull();
+        assertThat(ticket.getSlaDueAt()).isAfter(Instant.now());
+    }
+
+    @Test
     void manualAssignmentChecksThatTheEmployeeBelongsToTheTeam() {
         Employee employee = employee(12L, "Arjun Nair", EmployeeRole.AGENT);
         when(employeeRepository.findById(12L)).thenReturn(Optional.of(employee));

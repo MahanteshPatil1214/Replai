@@ -98,4 +98,47 @@ class TicketRepositoryTest extends RepositoryTest {
 
         assertThat(counts).containsEntry(11L, 2L).containsEntry(12L, 1L);
     }
+
+    @Test
+    void findSlaBreachesOnlyReturnsUnresolvedOverdueTicketsNotYetFlagged() {
+        Instant now = Instant.parse("2026-06-01T12:00:00Z");
+
+        Ticket overdue = ticket("overdue", "HIGH", TicketStatus.ASSIGNED, 1L, now);
+        overdue.setSlaDueAt(now.minusSeconds(60));
+        overdue.setSlaBreached(false);
+        repository.save(overdue);
+
+        Ticket resolved = ticket("resolved", "HIGH", TicketStatus.RESOLVED, 1L, now);
+        resolved.setSlaDueAt(now.minusSeconds(60));
+        resolved.setSlaBreached(false);
+        repository.save(resolved);
+
+        Ticket alreadyFlagged = ticket("flagged", "HIGH", TicketStatus.IN_PROGRESS, 1L, now);
+        alreadyFlagged.setSlaDueAt(now.minusSeconds(60));
+        alreadyFlagged.setSlaBreached(true);
+        repository.save(alreadyFlagged);
+
+        Ticket stillInTime = ticket("in time", "LOW", TicketStatus.ASSIGNED, 1L, now);
+        stillInTime.setSlaDueAt(now.plusSeconds(600));
+        stillInTime.setSlaBreached(false);
+        repository.save(stillInTime);
+
+        var breaches = repository.findSlaBreaches(now, TicketStatus.RESOLVED);
+
+        assertThat(breaches).extracting(Ticket::getSubject).containsExactly("overdue");
+    }
+
+    @Test
+    void findOlderThanReturnsOnlyTicketsStuckInThatStatus() {
+        Instant cutoff = Instant.parse("2026-06-01T00:02:00Z");
+
+        Ticket stuck = ticket("stuck", null, TicketStatus.OPEN, null, cutoff.minusSeconds(10));
+        repository.save(stuck);
+        ticket("fresh", null, TicketStatus.OPEN, null, cutoff.plusSeconds(10));
+        ticket("routed", "HIGH", TicketStatus.ASSIGNED, 1L, cutoff.minusSeconds(10));
+
+        var found = repository.findOlderThan(TicketStatus.OPEN, cutoff);
+
+        assertThat(found).extracting(Ticket::getSubject).containsExactly("stuck");
+    }
 }
