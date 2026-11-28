@@ -63,7 +63,7 @@ class AnalyticsRepositoryTest extends RepositoryTest {
         assertThat(openByTeam).contains(entry(2L, 1L));
 
         Map<Long, Long> solvedByEmployee = analyticsRepository
-                .resolvedCountByEmployee(TicketStatus.RESOLVED, null).stream()
+                .resolvedCountByEmployee(TicketStatus.RESOLVED).stream()
                 .collect(java.util.stream.Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
         assertThat(solvedByEmployee).contains(entry(11L, 1L), entry(12L, 1L));
 
@@ -87,7 +87,7 @@ class AnalyticsRepositoryTest extends RepositoryTest {
         outOfRange.setResolvedAt(Instant.parse("2025-11-01T04:00:00Z"));
         ticketRepository.save(outOfRange);
 
-        assertThat(analyticsRepository.resolvedRows(TicketStatus.RESOLVED, null)).hasSize(2);
+        assertThat(analyticsRepository.resolvedRows(TicketStatus.RESOLVED)).hasSize(2);
 
         Instant cutoff = Instant.parse("2025-12-01T00:00:00Z");
         List<Object[]> rows = analyticsRepository.resolvedRows(TicketStatus.RESOLVED, cutoff);

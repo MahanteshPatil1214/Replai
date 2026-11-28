@@ -50,7 +50,7 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public AnalyticsSummaryResponse summary() {
-        List<Object[]> rows = analyticsRepository.resolvedRows(RESOLVED, null);
+        List<Object[]> rows = analyticsRepository.resolvedRows(RESOLVED);
         return new AnalyticsSummaryResponse(
                 analyticsRepository.countUnresolved(RESOLVED),
                 analyticsRepository.countResolved(RESOLVED),
@@ -62,7 +62,7 @@ public class AnalyticsService {
     public List<TeamAnalyticsResponse> teams() {
         Map<Long, Long> openByTeam = toMap(analyticsRepository.openCountByTeam(RESOLVED));
 
-        Map<Long, List<Object[]>> resolvedByTeam = analyticsRepository.resolvedRows(RESOLVED, null)
+        Map<Long, List<Object[]>> resolvedByTeam = analyticsRepository.resolvedRows(RESOLVED)
                 .stream()
                 .filter(row -> row[0] != null)
                 .collect(Collectors.groupingBy(row -> (Long) row[0]));
@@ -90,11 +90,15 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public List<EmployeeAnalyticsResponse> employees(String range) {
         Instant cutoff = cutoffFor(range);
-        Map<Long, Long> solvedByEmployee =
-                toMap(analyticsRepository.resolvedCountByEmployee(RESOLVED, cutoff));
+        // Postgres cannot type a null cutoff parameter, so each case is its own query.
+        Map<Long, Long> solvedByEmployee = cutoff == null
+                ? toMap(analyticsRepository.resolvedCountByEmployee(RESOLVED))
+                : toMap(analyticsRepository.resolvedCountByEmployee(RESOLVED, cutoff));
 
-        Map<Long, List<Object[]>> rowsByEmployee = analyticsRepository.resolvedRows(RESOLVED, cutoff)
-                .stream()
+        List<Object[]> employeeRows = cutoff == null
+                ? analyticsRepository.resolvedRows(RESOLVED)
+                : analyticsRepository.resolvedRows(RESOLVED, cutoff);
+        Map<Long, List<Object[]>> rowsByEmployee = employeeRows.stream()
                 .filter(row -> row[1] != null)
                 .collect(Collectors.groupingBy(row -> (Long) row[1]));
 

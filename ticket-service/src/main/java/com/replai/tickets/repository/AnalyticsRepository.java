@@ -24,12 +24,22 @@ public interface AnalyticsRepository extends Repository<Ticket, Long> {
     /**
      * One row per resolved ticket: (teamId, assigneeId, createdAt, resolvedAt,
      * slaDueAt, slaBreached). Durations and SLA results are averaged from these
-     * rows. The optional cutoff restricts the range for the leaderboard.
+     * rows. The cutoff variant restricts the range for the leaderboard.
+     *
+     * Postgres cannot type a parameter that only appears in "is null", so the
+     * "no cutoff" case is a separate query instead of a null check.
      */
     @Query("""
             select t.teamId, t.assigneeId, t.createdAt, t.resolvedAt, t.slaDueAt, t.slaBreached
             from Ticket t
-            where t.status = :resolved and (:cutoff is null or t.resolvedAt >= :cutoff)
+            where t.status = :resolved
+            """)
+    List<Object[]> resolvedRows(@Param("resolved") TicketStatus resolvedStatus);
+
+    @Query("""
+            select t.teamId, t.assigneeId, t.createdAt, t.resolvedAt, t.slaDueAt, t.slaBreached
+            from Ticket t
+            where t.status = :resolved and t.resolvedAt >= :cutoff
             """)
     List<Object[]> resolvedRows(@Param("resolved") TicketStatus resolvedStatus,
                                 @Param("cutoff") Instant cutoff);
@@ -44,7 +54,14 @@ public interface AnalyticsRepository extends Repository<Ticket, Long> {
     @Query("""
             select t.assigneeId, count(t) from Ticket t
             where t.assigneeId is not null and t.status = :resolved
-              and (:cutoff is null or t.resolvedAt >= :cutoff)
+            group by t.assigneeId
+            """)
+    List<Object[]> resolvedCountByEmployee(@Param("resolved") TicketStatus resolvedStatus);
+
+    @Query("""
+            select t.assigneeId, count(t) from Ticket t
+            where t.assigneeId is not null and t.status = :resolved
+              and t.resolvedAt >= :cutoff
             group by t.assigneeId
             """)
     List<Object[]> resolvedCountByEmployee(@Param("resolved") TicketStatus resolvedStatus,
