@@ -1,4 +1,4 @@
-/** GET /api/teams and GET /api/employees — the directory used for routing and "Acting as". */
+/** GET /api/teams and GET /api/employees - the directory used for routing controls. */
 
 import { useQuery } from '@tanstack/react-query'
 import { api } from './client'

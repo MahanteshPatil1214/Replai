@@ -61,6 +61,7 @@ Everything between the two services happens **asynchronously over Kafka**, so ea
 - ✅ **Duplicate-tolerant consumers** — idempotent enrichment by `eventId`; malformed messages are logged and skipped, never fatal
 - ✅ **Clean layering** — Java `controller → service → repository` with request/response DTOs; Python `consumer.py` / `llm.py` / `rag/` / `kb_api.py`
 - ✅ **Single origin, zero CORS** — nginx proxies `/api/*` and `/kb/*`; the browser only ever talks to one host
+- ✅ **Login and roles (RBAC)** — BCrypt passwords, HS256 JWT, `AGENT` / `LEAD` / `ADMIN`: agents work their own tickets, leads and admins also get triage, analytics and the knowledge base
 - ✅ **Seed knowledge base** — 8 starter articles ingested and embedded automatically on first boot
 - ✅ **Modern UI** — React + Vite + TypeScript + Tailwind v4 + TanStack Query: new ticket, inbox, ticket detail with AI panel, KB browser with retrieval tester
 
@@ -126,7 +127,17 @@ cd Replai
 docker compose up --build
 ```
 
-Open **http://localhost:3000**, create a ticket, and watch it flip from `OPEN` to `ENRICHED` with sources.
+Open **http://localhost:3000**, sign in, create a ticket, and watch it flip from `OPEN` to `ENRICHED` with sources.
+
+Seeded accounts (password `replai123`, change it with `SEED_PASSWORD`):
+
+| Email | Role |
+|---|---|
+| `neha.verma@replai.dev` | admin |
+| `asha.kumar@replai.dev` | lead |
+| `ravi.sharma@replai.dev` | agent |
+
+The customer form at **http://localhost:3000/new** needs no account.
 
 | URL | Service |
 |---|---|
@@ -156,22 +167,38 @@ cp .env.example .env
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | postgres, both services | `replai` | |
 | `KAFKA_BOOTSTRAP_SERVERS` | both services | `kafka:9092` / `localhost:9092` | |
 | `POSTGRES_URL` | ticket-service | `jdbc:postgresql://postgres:5432/replai` | |
+| `JWT_SECRET` | both services | `replai-local-dev-secret-change-me-0123456789` | Signs and verifies login tokens, min 32 chars. **Set your own** |
+| `JWT_EXPIRY_MINUTES` | ticket-service | `480` | Token lifetime |
+| `SEED_PASSWORD` | ticket-service | `replai123` | Password given to the seeded employees |
 
 ## API reference
 
 ### ticket-service — `:8081`
 
+Everything except `POST /api/tickets` needs `Authorization: Bearer <token>`.
+
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/tickets` | Create a ticket → publishes `ticket.created` |
+| `POST` | `/api/auth/login` | `{email, password}` → `{token, employee}` (public) |
+| `GET` | `/api/auth/me` | The signed-in employee |
+| `POST` | `/api/tickets` | Create a ticket → publishes `ticket.created` (public) |
 | `GET` | `/api/tickets` | List tickets (newest first) |
 | `GET` | `/api/tickets/{id}` | Ticket with AI enrichment + sources |
 | `PATCH` | `/api/tickets/{id}/status` | Move a ticket `OPEN → ENRICHED → RESOLVED` |
+| `PATCH` | `/api/tickets/{id}/assign` | Assign from the triage board (LEAD/ADMIN) |
+| `POST` | `/api/tickets/{id}/resolve` | Final reply; agents only for their own tickets |
 
 ```bash
 curl -X POST http://localhost:8081/api/tickets \
   -H "Content-Type: application/json" \
   -d '{"customerEmail":"ana@example.com","subject":"Charged twice","message":"My card was charged two times for order 8891."}'
+
+# Log in, then call a protected endpoint
+TOKEN=$(curl -s -X POST http://localhost:8081/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"asha.kumar@replai.dev","password":"replai123"}' | jq -r .token)
+
+curl http://localhost:8081/api/tickets -H "Authorization: Bearer $TOKEN"
 ```
 
 ### ai-service — `:8001`
@@ -179,10 +206,10 @@ curl -X POST http://localhost:8081/api/tickets \
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Liveness probe |
-| `POST` | `/kb/articles` | Create an article (chunked + embedded on write) |
+| `POST` | `/kb/articles` | Create an article (chunked + embedded on write, LEAD/ADMIN) |
 | `GET` | `/kb/articles` | List articles |
 | `GET` | `/kb/articles/{id}` | One article |
-| `DELETE` | `/kb/articles/{id}` | Remove an article |
+| `DELETE` | `/kb/articles/{id}` | Remove an article (LEAD/ADMIN) |
 | `GET` | `/kb/search?q=…&limit=5` | Vector similarity search |
 | `GET` | `/kb/chunk-stats` | Chunking/embedding statistics |
 

@@ -206,11 +206,11 @@ A scheduled job runs every minute and sets `sla_breached = true` on overdue tick
 | Table | Columns |
 |---|---|
 | `teams` | id, name (Software Team, Infrastructure Team, Billing Team, Support Team) |
-| `employees` | id, name, email, team_id, role (`AGENT`, `LEAD`) |
+| `employees` | id, name, email, team_id, role (`AGENT`, `LEAD`, `ADMIN`), password_hash (BCrypt) |
 | `category_routing` | category, team_id |
 | `sla_policies` | priority, resolve_within_hours |
 
-Seed 4 teams and about 8 employees on startup.
+Seed 4 teams and 9 employees on startup (one lead and one agent per team, plus an admin), give every employee without a password the `SEED_PASSWORD` hash, and create the admin account on a database that predates login.
 
 ### Knowledge base (ai-service)
 
@@ -231,16 +231,44 @@ LIMIT 3;
 
 ## 8. REST API
 
-### ticket-service
+### Authentication (login and roles)
+
+Everyone except the customer signs in with an email and a password.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/tickets` | Create a ticket (customer) |
+| POST | `/api/auth/login` | Body `{email, password}` → `{token, employee}` |
+| GET | `/api/auth/me` | The signed-in employee |
+
+- The token is an **HS256 JWT** signed with `JWT_SECRET` and valid for `JWT_EXPIRY_MINUTES` (480 minutes by default). Claims: `sub` (employee id), `name`, `email`, `role`.
+- Passwords are stored as **BCrypt** hashes in `employees.password_hash`. Every seeded account uses `SEED_PASSWORD` (default `replai123`).
+- The web client sends `Authorization: Bearer <token>` with every call except login. A `401` clears the session and returns to `/login`.
+- `ai-service` verifies the same token with the same `JWT_SECRET`, because the browser calls `/kb` directly through the nginx / vite proxy.
+
+**Roles**
+
+| Action | AGENT | LEAD | ADMIN |
+|---|---|---|---|
+| Create a ticket (customer form) and read tickets, teams, employees, KB | yes | yes | yes |
+| Change status or resolve a ticket | only tickets assigned to them | any ticket | any ticket |
+| Assign from the triage board (`PATCH .../assign`) | no | yes | yes |
+| Analytics and knowledge gaps (`/api/analytics/**`) | no | yes | yes |
+| Add or delete knowledge base articles | no | yes | yes |
+
+Enforcement lives in two places: `SecurityConfig` in ticket-service (endpoint level, with JSON `401`/`403` responses) and `TicketService.assertCanWorkOn` (per-ticket ownership). The React app mirrors it: the Analytics nav item is hidden from agents, and the triage assign control plus the knowledge base edit buttons only render for leads and admins.
+
+### ticket-service
+
+All endpoints need a token except `POST /api/tickets`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/tickets` | Create a ticket (customer, public) |
 | GET | `/api/tickets` | List tickets. Filters: `status`, `team`, `priority`, `assignee` |
 | GET | `/api/tickets/{id}` | Ticket detail with AI results and SLA info |
-| PATCH | `/api/tickets/{id}/assign` | Assign to a team and employee (used for triage) |
+| PATCH | `/api/tickets/{id}/assign` | Assign to a team and employee (used for triage, LEAD/ADMIN) |
 | PATCH | `/api/tickets/{id}/status` | Move to `IN_PROGRESS` and so on |
-| POST | `/api/tickets/{id}/resolve` | Resolve with `finalReply` and `draftAction` |
+| POST | `/api/tickets/{id}/resolve` | Resolve with `finalReply` and `draftAction`. `resolvedBy` comes from the token, not the body |
 | GET | `/api/teams` | List teams |
 | GET | `/api/employees` | List employees (filter by team) |
 
@@ -259,12 +287,13 @@ LIMIT 3;
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/kb/articles` | Add an article (chunks and embeds it) |
+| POST | `/kb/articles` | Add an article (chunks and embeds it) - LEAD/ADMIN |
 | GET | `/kb/articles` | List articles |
-| DELETE | `/kb/articles/{id}` | Delete an article and its chunks |
+| GET | `/kb/articles/{id}` | One article |
+| DELETE | `/kb/articles/{id}` | Delete an article and its chunks - LEAD/ADMIN |
 | GET | `/kb/search?q=...` | Test search, returns the closest chunks |
 
-> For the MVP there is no login. The UI has a simple "Acting as" dropdown to switch between employees.
+> The customer form (`POST /api/tickets`) is the only endpoint anyone can call without signing in.
 
 ---
 
@@ -345,6 +374,7 @@ All numbers come from the `tickets` table, so no extra services are needed.
 - Hairline borders, generous spacing, light and dark mode
 
 **Screens:**
+0. **Sign in:** email and password, with the seeded accounts listed underneath
 1. **New ticket form:** clean customer-facing form
 2. **Team queue:** tickets for one team, sorted by priority, with SLA counters
 3. **Triage board:** `NEEDS_TRIAGE` tickets with an assign-to-team-and-employee control
@@ -366,8 +396,9 @@ replai/
 ├── ticket-service/         # Java Spring Boot
 │   ├── src/main/java/.../
 │   │   ├── controller/
-│   │   ├── service/        # routing, assignment, SLA, analytics
+│   │   ├── service/        # routing, assignment, SLA, analytics, auth
 │   │   ├── repository/
+│   │   ├── security/       # JWT filter, token service, RBAC rules
 │   │   ├── kafka/          # producer and consumer
 │   │   └── scheduler/      # SLA breach job, stuck-ticket job
 │   ├── src/main/resources/ # application.yml, seed data
@@ -377,6 +408,7 @@ replai/
 │   ├── app/
 │   │   ├── consumer.py     # Kafka consumer and producer
 │   │   ├── llm.py          # LLM call and JSON parsing
+│   │   ├── auth.py         # verifies the login token (KB writes)
 │   │   ├── rag/            # chunking, embeddings, vector search, confidence
 │   │   └── kb_api.py       # knowledge base endpoints
 │   ├── seed/               # starter knowledge base articles
@@ -385,6 +417,7 @@ replai/
 └── web/                    # React (Vite)
     ├── src/
     │   ├── api/
+    │   ├── lib/            # auth session, formatting, SLA helpers
     │   ├── pages/
     │   └── components/
     └── Dockerfile
@@ -457,7 +490,6 @@ docker compose up --build
 
 ## 16. Future Improvements (optional)
 
-- Login and roles (agent, lead, admin)
 - Retry topic and dead-letter topic for failed LLM calls
 - Idempotency check using `eventId`
 - Real-time UI updates with SSE or WebSocket
@@ -481,11 +513,11 @@ Not part of the MVP. Build these only after phases 1 to 5 are done.
 
 | Item | Why it's needed |
 |---|---|
-| Login and roles (admin, lead, agent) | Replaces the "Acting as" dropdown |
+| Password reset and invites | Login and roles (admin, lead, agent) exist; recovery does not |
 | Multi-tenancy | Many companies on one system, each with separate data (`tenant_id` on every table) |
 | Email-to-ticket and embeddable chat widget | More ways for customers to raise tickets |
 | Billing (Stripe or Razorpay) | Charge per agent per month |
-| Security basics | HTTPS, password hashing, audit logs |
+| Security basics | HTTPS, audit logs (passwords are already hashed with BCrypt) |
 | Reliability | Backups, retries, dead-letter topic, monitoring |
 | Easy onboarding | A new company set up in minutes |
 
@@ -496,7 +528,7 @@ Not part of the MVP. Build these only after phases 1 to 5 are done.
 
 **Positioning:** an open-source, self-hostable support platform for small teams, with transparent AI.
 
-**Rollout path:** finish the MVP, add login and multi-tenancy, add email-in and the widget, run 2 or 3 free pilots, then start charging.
+**Rollout path:** finish the MVP, add multi-tenancy, add email-in and the widget, run 2 or 3 free pilots, then start charging.
 
 ---
 

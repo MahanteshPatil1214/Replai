@@ -1,5 +1,7 @@
 /** One place for every HTTP call (agent.md: keep API calls in a single api/ folder). */
 
+import { authToken, signOut } from '../lib/auth'
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -10,9 +12,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = authToken()
   const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   })
 
   if (!response.ok) {
@@ -23,6 +30,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* keep the status text */
     }
+    // The token expired or was rejected: drop the session, the router sends
+    // the user back to /login. (A failed login itself must not do this.)
+    if (response.status === 401 && path !== '/api/auth/login') signOut()
     throw new ApiError(response.status, message)
   }
 

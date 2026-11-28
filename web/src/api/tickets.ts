@@ -101,7 +101,6 @@ export interface ResolveTicketInput {
   id: number
   finalReply: string
   draftAction: DraftAction
-  resolvedBy: number | null
 }
 
 /** POST /api/tickets/{id}/resolve — final reply plus what happened to the AI draft. */

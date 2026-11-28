@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useEmployees, useTeams } from '../api/directory'
 import { useAssignTicket, useTickets } from '../api/tickets'
 import { Pill, categoryTone, priorityTone, sentimentTone } from '../components/Pill'
-import { useActingAsId } from '../lib/actingAs'
+import { isLeadOrAdmin, useSession } from '../lib/auth'
 import { formatRelative } from '../lib/format'
 import type { Ticket } from '../types'
 
@@ -20,7 +20,7 @@ function triageReasons(ticket: Ticket): string[] {
 function AssignControl({ ticket }: { ticket: Ticket }) {
   const [teamId, setTeamId] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
-  const actingId = useActingAsId()
+  const { user } = useSession()
   const { data: teams } = useTeams()
   const { data: employees, isLoading: loadingEmployees } = useEmployees(
     teamId ? Number(teamId) : undefined,
@@ -28,13 +28,13 @@ function AssignControl({ ticket }: { ticket: Ticket }) {
   )
   const assign = useAssignTicket()
 
-  // Once a team is picked, prefer the acting employee when they belong to it.
+  // Once a team is picked, prefer the signed-in employee when they belong to it.
   useEffect(() => {
     if (!employees?.length) return
     if (assigneeId && employees.some((employee) => employee.id === Number(assigneeId))) return
-    const preferred = employees.find((employee) => employee.id === actingId)
+    const preferred = employees.find((employee) => employee.id === user?.id)
     setAssigneeId(String((preferred ?? employees[0]).id))
-  }, [employees, assigneeId, actingId])
+  }, [employees, assigneeId, user])
 
   const teamName = teams?.find((team) => team.id === Number(teamId))?.name
   const employeeName = employees?.find((employee) => employee.id === Number(assigneeId))?.name
@@ -76,7 +76,7 @@ function AssignControl({ ticket }: { ticket: Ticket }) {
           {employees?.map((employee) => (
             <option key={employee.id} value={employee.id}>
               {employee.name}
-              {employee.role === 'LEAD' ? ' (lead)' : ''}
+              {employee.role !== 'AGENT' ? ` (${employee.role.toLowerCase()})` : ''}
             </option>
           ))}
         </select>
@@ -109,6 +109,8 @@ function AssignControl({ ticket }: { ticket: Ticket }) {
 
 /** Triage board: NEEDS_TRIAGE tickets with a team-then-employee assign control. */
 export default function Triage() {
+  const { user } = useSession()
+  const canAssign = isLeadOrAdmin(user)
   const { data, isLoading, isError, error, refetch, isFetching } = useTickets({
     status: 'NEEDS_TRIAGE',
   })
@@ -185,7 +187,13 @@ export default function Triage() {
               </div>
 
               <div className="mt-4 border-t border-hairline pt-4">
-                <AssignControl ticket={ticket} />
+                {canAssign ? (
+                  <AssignControl ticket={ticket} />
+                ) : (
+                  <p className="mono text-muted">
+                    Only leads and admins pick the team - your job is the tickets assigned to you.
+                  </p>
+                )}
               </div>
             </article>
           ))}

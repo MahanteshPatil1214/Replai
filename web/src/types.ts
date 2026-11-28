@@ -5,7 +5,7 @@ export type Priority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 export type Sentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE'
 export type Category = 'Software' | 'Infrastructure' | 'Billing' | 'Account' | 'General'
 export type DraftAction = 'ACCEPTED' | 'EDITED' | 'REJECTED'
-export type EmployeeRole = 'AGENT' | 'LEAD'
+export type EmployeeRole = 'AGENT' | 'LEAD' | 'ADMIN'
 
 export interface SourceRef {
   articleId: number

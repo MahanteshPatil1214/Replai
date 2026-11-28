@@ -5,9 +5,11 @@ import com.replai.tickets.dto.CreateTicketRequest;
 import com.replai.tickets.dto.ResolveTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
 import com.replai.tickets.dto.UpdateStatusRequest;
+import com.replai.tickets.security.CurrentUser;
 import com.replai.tickets.service.TicketService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +32,7 @@ public class TicketController {
         this.ticketService = ticketService;
     }
 
+    /** Public: the customer form does not log in. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public TicketResponse create(@Valid @RequestBody CreateTicketRequest request) {
@@ -50,18 +53,25 @@ public class TicketController {
         return ticketService.findById(id);
     }
 
+    /** Restricted to LEAD and ADMIN in SecurityConfig (the triage board). */
     @PatchMapping("/{id}/assign")
     public TicketResponse assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request) {
         return ticketService.assign(id, request.teamId(), request.assigneeId());
     }
 
     @PostMapping("/{id}/resolve")
-    public TicketResponse resolve(@PathVariable Long id, @Valid @RequestBody ResolveTicketRequest request) {
-        return ticketService.resolve(id, request);
+    public TicketResponse resolve(
+            @PathVariable Long id,
+            @Valid @RequestBody ResolveTicketRequest request,
+            @AuthenticationPrincipal CurrentUser user) {
+        return ticketService.resolve(id, request, user);
     }
 
     @PatchMapping("/{id}/status")
-    public TicketResponse updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
-        return ticketService.updateStatus(id, request.status());
+    public TicketResponse updateStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateStatusRequest request,
+            @AuthenticationPrincipal CurrentUser user) {
+        return ticketService.updateStatus(id, request.status(), user);
     }
 }

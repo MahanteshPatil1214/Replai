@@ -1,6 +1,8 @@
 package com.replai.tickets.controller;
 
+import com.replai.tickets.service.ForbiddenException;
 import com.replai.tickets.service.InvalidAssignmentException;
+import com.replai.tickets.service.InvalidCredentialsException;
 import com.replai.tickets.service.TicketNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(TicketNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(TicketNotFoundException ex) {
         return body(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return body(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> handleForbidden(ForbiddenException ex) {
+        return body(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(InvalidAssignmentException.class)

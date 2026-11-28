@@ -25,6 +25,8 @@ class Settings:
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
     consumer_enabled: bool = True
+    # Same secret ticket-service signs its login tokens with (project.md section 8).
+    jwt_secret: str = "replai-local-dev-secret-change-me-0123456789"
     # Below this similarity the AI does not guess: hand the ticket to a human.
     confidence_threshold: float = 0.45
 
@@ -53,6 +55,7 @@ def load_settings() -> Settings:
         embedding_dim=int(_env("EMBEDDING_DIM", "384")),
         consumer_enabled=_env("KAFKA_CONSUMER_ENABLED", "true").lower() != "false",
         confidence_threshold=float(_env("CONFIDENCE_THRESHOLD", "0.45")),
+        jwt_secret=_env("JWT_SECRET", "replai-local-dev-secret-change-me-0123456789"),
     )
 
 

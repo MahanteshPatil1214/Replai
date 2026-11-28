@@ -4,9 +4,11 @@ import com.replai.tickets.dto.CreateTicketRequest;
 import com.replai.tickets.dto.TicketResponse;
 import com.replai.tickets.kafka.TicketCreatedEvent;
 import com.replai.tickets.kafka.TicketEventProducer;
+import com.replai.tickets.model.EmployeeRole;
 import com.replai.tickets.model.Ticket;
 import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
+import com.replai.tickets.security.CurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +24,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TicketServiceTest {
+
+    private static final CurrentUser AGENT = new CurrentUser(12L, "Ravi Sharma", "ravi.sharma@replai.dev", EmployeeRole.AGENT);
+    private static final CurrentUser LEAD = new CurrentUser(1L, "Asha Kumar", "asha.kumar@replai.dev", EmployeeRole.LEAD);
 
     private TicketRepository repository;
     private TicketEventProducer producer;
@@ -81,7 +86,7 @@ class TicketServiceTest {
         ticket.setMessage("m");
         when(repository.findById(1L)).thenReturn(Optional.of(ticket));
 
-        TicketResponse response = service.updateStatus(1L, "RESOLVED");
+        TicketResponse response = service.updateStatus(1L, "RESOLVED", LEAD);
 
         assertThat(response.status()).isEqualTo("RESOLVED");
     }
@@ -109,17 +114,54 @@ class TicketServiceTest {
         ticket.setCustomerEmail("a@b.com");
         ticket.setSubject("s");
         ticket.setMessage("m");
+        ticket.setAssigneeId(AGENT.id());
         when(repository.findById(1L)).thenReturn(Optional.of(ticket));
 
         TicketResponse response = service.resolve(1L,
-                new com.replai.tickets.dto.ResolveTicketRequest("Fixed by clearing the cache.", "EDITED", 12L));
+                new com.replai.tickets.dto.ResolveTicketRequest("Fixed by clearing the cache.", "EDITED"), AGENT);
 
         assertThat(response.status()).isEqualTo("RESOLVED");
         assertThat(response.finalReply()).isEqualTo("Fixed by clearing the cache.");
         assertThat(response.draftAction()).isEqualTo("EDITED");
+        // The owner comes from the token, not from the request body.
         assertThat(response.resolvedBy()).isEqualTo(12L);
         assertThat(response.resolvedAt()).isNotNull();
         verify(repository).save(ticket);
+    }
+
+    @Test
+    void agentCannotResolveATicketAssignedToSomebodyElse() {
+        Ticket ticket = new Ticket();
+        ticket.setAssigneeId(99L);
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.resolve(1L,
+                new com.replai.tickets.dto.ResolveTicketRequest("nope", "ACCEPTED"), AGENT))
+                .isInstanceOf(ForbiddenException.class);
+
+        verify(repository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void agentCannotChangeTheStatusOfAnUnassignedTicket() {
+        Ticket ticket = new Ticket();
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.updateStatus(1L, "IN_PROGRESS", AGENT))
+                .isInstanceOf(ForbiddenException.class);
+
+        verify(repository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void leadCanWorkAnyTicket() {
+        Ticket ticket = new Ticket();
+        ticket.setAssigneeId(99L);
+        when(repository.findById(1L)).thenReturn(Optional.of(ticket));
+
+        TicketResponse response = service.updateStatus(1L, "IN_PROGRESS", LEAD);
+
+        assertThat(response.status()).isEqualTo("IN_PROGRESS");
     }
 
     @Test

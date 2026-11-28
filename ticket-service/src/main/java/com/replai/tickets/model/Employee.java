@@ -34,6 +34,10 @@ public class Employee {
     @Column(nullable = false, length = 20)
     private EmployeeRole role = EmployeeRole.AGENT;
 
+    /** BCrypt hash. Null means the employee cannot log in (rows created before login existed). */
+    @Column(name = "password_hash", length = 100)
+    private String passwordHash;
+
     public Employee() {
     }
 
@@ -78,5 +82,13 @@ public class Employee {
 
     public void setRole(EmployeeRole role) {
         this.role = role;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 }

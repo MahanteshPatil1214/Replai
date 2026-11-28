@@ -1,6 +1,15 @@
 server:
   port: ${SERVER_PORT:8081}
 
+# Login (project.md section 8). Override JWT_SECRET in .env for anything but local dev.
+jwt:
+  secret: ${JWT_SECRET:replai-local-dev-secret-change-me-0123456789}
+  expiry-minutes: ${JWT_EXPIRY_MINUTES:480}
+
+# Password given to the seeded employees (sha of it lives only in the database).
+seed:
+  password: ${SEED_PASSWORD:replai123}
+
 spring:
   application:
     name: ticket-service

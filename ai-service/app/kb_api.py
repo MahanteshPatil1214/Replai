@@ -6,10 +6,11 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from . import db
+from .auth import require_lead_or_admin
 from .config import settings
 from .consumer import TicketConsumer
 from .events import producer
@@ -138,11 +139,14 @@ def health() -> dict[str, str]:
 # --- knowledge base -------------------------------------------------------
 
 
+# Writes need a LEAD or ADMIN token (project.md section 8); reads are open
+# to anyone who is signed in.
+
 # Sync `def` endpoints: FastAPI runs them in a thread pool, so the blocking
 # Postgres and embedding calls here never stall the Kafka consumer.
 
 
-@app.post("/kb/articles", status_code=201)
+@app.post("/kb/articles", status_code=201, dependencies=[Depends(require_lead_or_admin)])
 def add_article(payload: CreateArticleRequest) -> dict:
     """Adds an article and chunks + embeds it automatically."""
     return store.create_article(payload.title, payload.content)
@@ -161,7 +165,7 @@ def article(article_id: int) -> dict:
     return found
 
 
-@app.delete("/kb/articles/{article_id}", status_code=204)
+@app.delete("/kb/articles/{article_id}", status_code=204, dependencies=[Depends(require_lead_or_admin)])
 def remove_article(article_id: int) -> None:
     if not store.delete_article(article_id):
         raise HTTPException(status_code=404, detail=f"Article {article_id} not found")

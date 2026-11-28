@@ -30,6 +30,13 @@ Replai is an AI customer support platform built from 3 services plus infrastruct
 - Never commit secrets. Read keys from environment variables (`.env`), and keep `.env` out of git.
 - Update `project.md` if you change the architecture, APIs, events, or schema.
 
+### Login and roles (RBAC)
+- Roles are `AGENT`, `LEAD`, `ADMIN` on `employees.role`. Passwords are BCrypt hashes in `employees.password_hash`.
+- `POST /api/tickets` is the only public endpoint (the customer form). Everything else needs `Authorization: Bearer <token>` from `POST /api/auth/login`.
+- Ticket-service owns login and signs HS256 JWTs with `JWT_SECRET`; ai-service verifies the same token with the same secret (`app/auth.py`) because the browser calls `/kb` directly. Keep the two defaults identical.
+- Endpoint rules live in `security/SecurityConfig.java`, per-ticket ownership in `TicketService.assertCanWorkOn` (agents only touch tickets assigned to them). Do not trust anything in the request body for identity - `resolvedBy` comes from the token.
+- The web app mirrors the rules for looks only (`lib/auth.ts`, `RequireRole` in `App.tsx`); the API is what actually enforces them.
+
 ### Kafka and events
 - Topics: `ticket.created` and `ticket.enriched` only.
 - Use `ticketId` as the message key.
@@ -108,6 +115,9 @@ KAFKA_BOOTSTRAP_SERVERS=kafka:9092
 POSTGRES_URL=
 POSTGRES_USER=
 POSTGRES_PASSWORD=
+JWT_SECRET=            # shared by ticket-service and ai-service (>= 32 characters)
+JWT_EXPIRY_MINUTES=480
+SEED_PASSWORD=         # password given to the seeded employees
 ```
 
 ## Definition of done

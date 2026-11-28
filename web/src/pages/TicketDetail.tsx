@@ -5,7 +5,7 @@ import { useResolveTicket, useTicket, useUpdateStatus } from '../api/tickets'
 import CopyButton from '../components/CopyButton'
 import SlaCounter from '../components/SlaCounter'
 import { Pill, categoryTone, draftTone, priorityTone, sentimentTone, statusTone } from '../components/Pill'
-import { useActingAsId } from '../lib/actingAs'
+import { useSession } from '../lib/auth'
 import { formatTimestamp } from '../lib/format'
 import type { DraftAction, Ticket } from '../types'
 
@@ -99,13 +99,12 @@ function AiPanel({ ticket }: { ticket: Ticket }) {
 }
 
 /** Accept / Edit / Reject + the reply that actually goes out. */
-function ReplyComposer({ ticket, actingName }: { ticket: Ticket; actingName: string | null }) {
+function ReplyComposer({ ticket, userName }: { ticket: Ticket; userName: string | null }) {
   const [choice, setChoice] = useState<DraftAction | null>(null)
   const [reply, setReply] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const resolve = useResolveTicket()
-  const actingId = useActingAsId()
 
   const text = reply ?? ticket.suggestedReply ?? ''
   const picked: DraftAction = choice ?? (ticket.suggestedReply ? 'ACCEPTED' : 'REJECTED')
@@ -130,16 +129,12 @@ function ReplyComposer({ ticket, actingName }: { ticket: Ticket; actingName: str
       setError('Write the final reply before resolving.')
       return
     }
-    if (actingId === null) {
-      setError('Pick who you are acting as (top right) so the ticket has an owner.')
-      return
-    }
     try {
+      // resolvedBy comes from the JWT on the server; nothing is chosen here.
       await resolve.mutateAsync({
         id: ticket.id,
         finalReply: text.trim(),
         draftAction,
-        resolvedBy: actingId,
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not resolve the ticket')
@@ -151,7 +146,7 @@ function ReplyComposer({ ticket, actingName }: { ticket: Ticket; actingName: str
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-lg">Resolve ticket</h2>
         <span className="mono text-muted">
-          acting as {actingName ?? '—'}
+          resolving as {userName ?? '-'}
         </span>
       </div>
 
@@ -262,7 +257,7 @@ export default function TicketDetail() {
   const { data: employees } = useEmployees()
   const { data: teams } = useTeams()
   const updateStatus = useUpdateStatus()
-  const actingId = useActingAsId()
+  const { user } = useSession()
 
   if (isLoading) return <p className="text-sm text-muted">Loading ticket…</p>
 
@@ -371,7 +366,7 @@ export default function TicketDetail() {
       ) : (
         <ReplyComposer
           ticket={ticket}
-          actingName={nameOf(actingId) ?? nameOf(ticket.assigneeId)}
+          userName={user?.name ?? nameOf(ticket.assigneeId)}
         />
       )}
     </div>

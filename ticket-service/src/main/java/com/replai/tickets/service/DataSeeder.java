@@ -11,17 +11,20 @@ import com.replai.tickets.repository.SlaPolicyRepository;
 import com.replai.tickets.repository.TeamRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 /**
- * Seeds the reference data the spec requires on startup: 4 teams, 8 employees,
- * the category routing table and the SLA policies. Everything is idempotent, so
- * restarting the service never duplicates a row.
+ * Seeds the reference data the spec requires on startup: 4 teams, 9 employees
+ * (including the first admin), the category routing table and the SLA
+ * policies. Everything is idempotent, so restarting the service never
+ * duplicates a row.
  */
 @Component
 public class DataSeeder {
@@ -32,22 +35,30 @@ public class DataSeeder {
     private final EmployeeRepository employeeRepository;
     private final CategoryRoutingRepository categoryRoutingRepository;
     private final SlaPolicyRepository slaPolicyRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final String seedPassword;
 
     public DataSeeder(
             TeamRepository teamRepository,
             EmployeeRepository employeeRepository,
             CategoryRoutingRepository categoryRoutingRepository,
-            SlaPolicyRepository slaPolicyRepository) {
+            SlaPolicyRepository slaPolicyRepository,
+            PasswordEncoder passwordEncoder,
+            @Value("${seed.password}") String seedPassword) {
         this.teamRepository = teamRepository;
         this.employeeRepository = employeeRepository;
         this.categoryRoutingRepository = categoryRoutingRepository;
         this.slaPolicyRepository = slaPolicyRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.seedPassword = seedPassword;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void seed() {
         seedTeamsAndEmployees();
+        ensureSeedPasswords();
+        ensureAdmin();
         seedCategoryRouting();
         seedSlaPolicies();
     }
@@ -70,10 +81,43 @@ public class DataSeeder {
                 new Employee("Sneha Iyer", "sneha.iyer@replai.dev", billing.getId(), EmployeeRole.LEAD),
                 new Employee("Arjun Nair", "arjun.nair@replai.dev", billing.getId(), EmployeeRole.AGENT),
                 new Employee("Priya Das", "priya.das@replai.dev", support.getId(), EmployeeRole.LEAD),
-                new Employee("Karan Mehta", "karan.mehta@replai.dev", support.getId(), EmployeeRole.AGENT));
+                new Employee("Karan Mehta", "karan.mehta@replai.dev", support.getId(), EmployeeRole.AGENT),
+                new Employee("Neha Verma", "neha.verma@replai.dev", support.getId(), EmployeeRole.ADMIN));
         employeeRepository.saveAll(employees);
 
         log.info("Seeded 4 teams and {} employees", employees.size());
+    }
+
+    /**
+     * Rows created before login existed have no password. Give them the seed
+     * password so every seeded employee can sign in on an old database too.
+     */
+    private void ensureSeedPasswords() {
+        int updated = 0;
+        for (Employee employee : employeeRepository.findAll()) {
+            if (employee.getPasswordHash() == null || employee.getPasswordHash().isBlank()) {
+                employee.setPasswordHash(passwordEncoder.encode(seedPassword));
+                employeeRepository.save(employee);
+                updated++;
+            }
+        }
+        if (updated > 0) {
+            log.info("Set the seed password on {} employees without a password", updated);
+        }
+    }
+
+    /** An old database has no ADMIN yet - add one so RBAC has somebody to grant it to. */
+    private void ensureAdmin() {
+        if (!employeeRepository.findByRole(EmployeeRole.ADMIN).isEmpty()) {
+            return;
+        }
+        teamRepository.findAll().stream().findFirst().ifPresent(team -> {
+            Employee admin = new Employee(
+                    "Neha Verma", "neha.verma@replai.dev", team.getId(), EmployeeRole.ADMIN);
+            admin.setPasswordHash(passwordEncoder.encode(seedPassword));
+            employeeRepository.save(admin);
+            log.info("Seeded the admin account {}", admin.getEmail());
+        });
     }
 
     private void seedCategoryRouting() {

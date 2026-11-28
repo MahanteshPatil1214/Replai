@@ -8,6 +8,7 @@ import com.replai.tickets.kafka.TicketEventProducer;
 import com.replai.tickets.model.Ticket;
 import com.replai.tickets.model.TicketStatus;
 import com.replai.tickets.repository.TicketRepository;
+import com.replai.tickets.security.CurrentUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -89,24 +90,41 @@ public class TicketService {
     }
 
     @Transactional
-    public TicketResponse resolve(Long id, ResolveTicketRequest request) {
+    public TicketResponse resolve(Long id, ResolveTicketRequest request, CurrentUser user) {
         Ticket ticket = getOrThrow(id);
+        assertCanWorkOn(ticket, user);
         Instant now = Instant.now();
 
         ticket.setStatus(TicketStatus.RESOLVED);
         ticket.setFinalReply(request.finalReply().trim());
         ticket.setDraftAction(request.draftAction());
-        ticket.setResolvedBy(request.resolvedBy());
+        // The owner comes from the JWT, never from the request body.
+        ticket.setResolvedBy(user.id());
         ticket.setResolvedAt(now);
 
         return TicketResponse.from(ticketRepository.save(ticket));
     }
 
     @Transactional
-    public TicketResponse updateStatus(Long id, String status) {
+    public TicketResponse updateStatus(Long id, String status, CurrentUser user) {
         Ticket ticket = getOrThrow(id);
+        assertCanWorkOn(ticket, user);
         ticket.setStatus(TicketStatus.valueOf(status));
         return TicketResponse.from(ticketRepository.save(ticket));
+    }
+
+    /**
+     * RBAC rule for ticket work: an AGENT may only touch a ticket that is
+     * assigned to them. Leads and admins can work any ticket.
+     */
+    private void assertCanWorkOn(Ticket ticket, CurrentUser user) {
+        if (user.isLeadOrAdmin()) {
+            return;
+        }
+        if (ticket.getAssigneeId() != null && ticket.getAssigneeId().equals(user.id())) {
+            return;
+        }
+        throw new ForbiddenException("agents can only work tickets assigned to them");
     }
 
     private TicketStatus parseStatus(String status) {

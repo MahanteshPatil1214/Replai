@@ -1,14 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCreateTicket } from '../api/tickets'
+import { useSession } from '../lib/auth'
 
 const EMPTY = { customerEmail: '', subject: '', message: '' }
 
 export default function NewTicket() {
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  const [createdId, setCreatedId] = useState<number | null>(null)
   const createTicket = useCreateTicket()
   const navigate = useNavigate()
+  const { token } = useSession()
 
   function update(field: keyof typeof form) {
     return (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -21,10 +24,33 @@ export default function NewTicket() {
     try {
       const ticket = await createTicket.mutateAsync(form)
       setForm(EMPTY)
-      navigate(`/tickets/${ticket.id}`)
+      // The detail screen needs an account; a customer without one gets a receipt.
+      if (token) navigate(`/tickets/${ticket.id}`)
+      else setCreatedId(ticket.id)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create the ticket')
     }
+  }
+
+  if (createdId !== null) {
+    return (
+      <div className="card p-8">
+        <p className="mono text-muted">TICKET #{createdId}</p>
+        <h1 className="mt-2 text-4xl">Thanks - we have it</h1>
+        <p className="mt-3 text-[15px] text-muted">
+          Your ticket is in the queue. The AI drafts a reply from our help articles, and a human
+          steps in whenever it is not sure.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button type="button" className="btn-primary" onClick={() => setCreatedId(null)}>
+            Raise another ticket
+          </button>
+          <Link to="/login" className="btn-quiet">
+            I work here - sign in
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (

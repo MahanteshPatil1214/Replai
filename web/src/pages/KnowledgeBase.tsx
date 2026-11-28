@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useCreateArticle, useDeleteArticle, useSearch, useArticles } from '../api/kb'
+import { isLeadOrAdmin, useSession } from '../lib/auth'
 import { formatTimestamp } from '../lib/format'
 
 function ProgressBar({ score }: { score: number }) {
@@ -38,6 +39,9 @@ export default function KnowledgeBase() {
   const { data: search, isFetching: searching } = useSearch(query)
   const createArticle = useCreateArticle()
   const deleteArticle = useDeleteArticle()
+  // Adding and deleting articles needs LEAD or ADMIN (ai-service checks it too).
+  const { user } = useSession()
+  const canEdit = isLeadOrAdmin(user)
 
   async function onAdd(event: FormEvent) {
     event.preventDefault()
@@ -63,9 +67,13 @@ export default function KnowledgeBase() {
             which passages would be retrieved for a ticket.
           </p>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Close' : 'Add article'}
-        </button>
+        {canEdit ? (
+          <button type="button" className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Close' : 'Add article'}
+          </button>
+        ) : (
+          <p className="mono text-muted">READ ONLY - LEAD OR ADMIN</p>
+        )}
       </div>
 
       <section className="mt-8">
@@ -104,7 +112,7 @@ export default function KnowledgeBase() {
         )}
       </section>
 
-      {showForm && (
+      {showForm && canEdit && (
         <form onSubmit={onAdd} className="card mt-8 space-y-4 p-6">
           <div>
             <label htmlFor="kbTitle" className="mb-1.5 block text-sm font-medium">
@@ -177,18 +185,20 @@ export default function KnowledgeBase() {
                     {article.chunkCount} chunks · {formatTimestamp(article.createdAt)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn-quiet !px-2.5 !py-1.5 text-xs"
-                  disabled={deleteArticle.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${article.title}" and its chunks?`)) {
-                      deleteArticle.mutate(article.id)
-                    }
-                  }}
-                >
-                  Delete
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="btn-quiet !px-2.5 !py-1.5 text-xs"
+                    disabled={deleteArticle.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Delete "${article.title}" and its chunks?`)) {
+                        deleteArticle.mutate(article.id)
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
               </li>
             ))}
           </ul>
